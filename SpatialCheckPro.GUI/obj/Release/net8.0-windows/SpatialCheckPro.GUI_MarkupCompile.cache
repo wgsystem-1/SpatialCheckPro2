@@ -11,9 +11,9 @@ false
 TRACE;RELEASE;NET;NET8_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
 G:\SpatialCheckPro\SpatialCheckPro.GUI\App.xaml
 19-1092996106
-
-84181467551
-282-393583681
+1-1535292228
+85613197414
+281-1179910089
 MainWindow.xaml;Styles\ModernStyles.xaml;Styles\StageResources.xaml;Styles\Theme.Dashboard.xaml;ValidationSettingsWindow.xaml;Views\AdvancedFilterWindow.xaml;Views\BulkStatusChangeWindow.xaml;Views\CompactValidationProgressView.xaml;Views\FolderSelectionPreviewDialog.xaml;Views\ModernMessageDialog.xaml;Views\PredictionAccuracyView.xaml;Views\ReportView.xaml;Views\StageTimelineSandboxView.xaml;Views\UserSettingsWindow.xaml;Views\ValidationProgressView.xaml;Views\ValidationResultView.xaml;Views\ValidationSettingsView.xaml;Views\WelcomeView.xaml;Views\WideDashboardView.xaml;
 
 False

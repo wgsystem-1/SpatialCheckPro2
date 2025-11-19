@@ -25,7 +25,6 @@
           "PDFsharp-MigraDoc": "6.2.1",
           "Serilog": "4.2.0",
           "SpatialCheckPro": "1.0.0",
-          "Xceed.Wpf.Toolkit": "4.5.22477.12540",
           "iTextSharp.LGPLv2.Core": "3.4.21"
         },
         "runtime": {
@@ -1178,14 +1177,6 @@
           }
         }
       },
-      "Xceed.Wpf.Toolkit/4.5.22477.12540": {
-        "runtime": {
-          "lib/net5.0/Xceed.Wpf.Toolkit.NET5.dll": {
-            "assemblyVersion": "4.5.22477.12540",
-            "fileVersion": "4.5.22477.12540"
-          }
-        }
-      },
       "SpatialCheckPro/1.0.0": {
         "dependencies": {
           "CsvHelper": "33.1.0",
@@ -1746,13 +1737,6 @@
       "sha512": "sha512-NEnpppwq67fRz/OvQRxsEMgetDJsxlxpEsAFO/4PZYbAyAMd4Ol6KS7phc8uDoKPsnbdzRLKobpX303uQwCqdg==",
       "path": "system.text.json/9.0.9",
       "hashPath": "system.text.json.9.0.9.nupkg.sha512"
-    },
-    "Xceed.Wpf.Toolkit/4.5.22477.12540": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-GjxsRf37xSyYgsF/r47kgntyZxIHM0uHmyXZZEmu9YWbss8KRkbeMdvUmjb00HlVR8aB2qCwTNktaB7+ZiMzMw==",
-      "path": "xceed.wpf.toolkit/4.5.22477.12540",
-      "hashPath": "xceed.wpf.toolkit.4.5.22477.12540.nupkg.sha512"
     },
     "SpatialCheckPro/1.0.0": {
       "type": "project",

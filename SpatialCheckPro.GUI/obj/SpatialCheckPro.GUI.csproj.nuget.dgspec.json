@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj": {}
+    "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj": {}
   },
   "projects": {
-    "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj": {
+    "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj",
+        "projectUniqueName": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj",
         "projectName": "SpatialCheckPro.GUI",
-        "projectPath": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj",
+        "projectPath": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj",
         "packagesPath": "C:\\Users\\niceg\\.nuget\\packages\\",
-        "outputPath": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\obj\\",
+        "outputPath": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -32,8 +32,8 @@
           "net8.0-windows7.0": {
             "targetAlias": "net8.0-windows",
             "projectReferences": {
-              "G:\\SpatialCheckPro\\SpatialCheckPro\\SpatialCheckPro.csproj": {
-                "projectPath": "G:\\SpatialCheckPro\\SpatialCheckPro\\SpatialCheckPro.csproj"
+              "G:\\SpatialCheckPro2\\SpatialCheckPro\\SpatialCheckPro.csproj": {
+                "projectPath": "G:\\SpatialCheckPro2\\SpatialCheckPro\\SpatialCheckPro.csproj"
               }
             }
           }
@@ -49,6 +49,10 @@
         "net8.0-windows7.0": {
           "targetAlias": "net8.0-windows",
           "dependencies": {
+            "CommunityToolkit.Mvvm": {
+              "target": "Package",
+              "version": "[8.4.0, )"
+            },
             "GDAL": {
               "target": "Package",
               "version": "[3.10.3, )"
@@ -115,10 +119,6 @@
               "target": "Package",
               "version": "[4.2.0, )"
             },
-            "Xceed.Wpf.Toolkit": {
-              "target": "Package",
-              "version": "[4.5.22477.12540, )"
-            },
             "iTextSharp.LGPLv2.Core": {
               "target": "Package",
               "version": "[3.4.21, )"
@@ -135,6 +135,12 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
+              "version": "[8.0.21, 8.0.21]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -147,14 +153,14 @@
         }
       }
     },
-    "G:\\SpatialCheckPro\\SpatialCheckPro\\SpatialCheckPro.csproj": {
+    "G:\\SpatialCheckPro2\\SpatialCheckPro\\SpatialCheckPro.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "G:\\SpatialCheckPro\\SpatialCheckPro\\SpatialCheckPro.csproj",
+        "projectUniqueName": "G:\\SpatialCheckPro2\\SpatialCheckPro\\SpatialCheckPro.csproj",
         "projectName": "SpatialCheckPro",
-        "projectPath": "G:\\SpatialCheckPro\\SpatialCheckPro\\SpatialCheckPro.csproj",
+        "projectPath": "G:\\SpatialCheckPro2\\SpatialCheckPro\\SpatialCheckPro.csproj",
         "packagesPath": "C:\\Users\\niceg\\.nuget\\packages\\",
-        "outputPath": "G:\\SpatialCheckPro\\SpatialCheckPro\\obj\\",
+        "outputPath": "G:\\SpatialCheckPro2\\SpatialCheckPro\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

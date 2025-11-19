@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "Pfrxz/IBmTQ=",
+  "dgSpecHash": "05rPDtM5No0=",
   "success": true,
-  "projectFilePath": "G:\\SpatialCheckPro\\SpatialCheckPro\\SpatialCheckPro.csproj",
+  "projectFilePath": "G:\\SpatialCheckPro2\\SpatialCheckPro\\SpatialCheckPro.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\niceg\\.nuget\\packages\\bouncycastle.cryptography\\2.3.1\\bouncycastle.cryptography.2.3.1.nupkg.sha512",
     "C:\\Users\\niceg\\.nuget\\packages\\csvhelper\\33.1.0\\csvhelper.33.1.0.nupkg.sha512",

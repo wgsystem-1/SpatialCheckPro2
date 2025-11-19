@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using SpatialCheckPro.Services;
 using SpatialCheckPro.Utils;
+using SpatialCheckPro.Processors.RelationChecks;
 
 namespace SpatialCheckPro.Processors
 {
@@ -37,6 +38,11 @@ namespace SpatialCheckPro.Processors
         private readonly Dictionary<string, DateTime> _cacheTimestamps = new();
 
         /// <summary>
+        /// 관계 검수 전략 목록
+        /// </summary>
+        private readonly Dictionary<string, IRelationCheckStrategy> _strategies;
+
+        /// <summary>
         /// 진행률 업데이트 시간 제어 (UI 부하 감소)
         /// </summary>
         private DateTime _lastProgressUpdate = DateTime.MinValue;
@@ -57,6 +63,19 @@ namespace SpatialCheckPro.Processors
             _featureFilterService = featureFilterService ?? new FeatureFilterService(
                 logger as ILogger<FeatureFilterService> ?? new LoggerFactory().CreateLogger<FeatureFilterService>(),
                 _performanceSettings);
+
+            _strategies = new Dictionary<string, IRelationCheckStrategy>(StringComparer.OrdinalIgnoreCase);
+            
+            var pointInsideStrategy = new PointInsidePolygonStrategy(_logger);
+            _strategies.Add(pointInsideStrategy.CaseType, pointInsideStrategy);
+
+            var lineWithinStrategy = new LineWithinPolygonStrategy(
+                _logger, 
+                _streamingProcessor, 
+                _unionGeometryCache, 
+                _cacheTimestamps, 
+                _geometryCriteria.LineWithinPolygonTolerance);
+            _strategies.Add(lineWithinStrategy.CaseType, lineWithinStrategy);
         }
 
         /// <summary>
@@ -158,12 +177,22 @@ namespace SpatialCheckPro.Processors
             // CaseType 별 분기 (CSV 1행 단위)
             var caseType = (config.CaseType ?? string.Empty).Trim();
             var fieldFilter = (config.FieldFilter ?? string.Empty).Trim();
-            if (caseType.Equals("PointInsidePolygon", StringComparison.OrdinalIgnoreCase))
+            if (_strategies.TryGetValue(caseType, out var strategy))
             {
+                await strategy.ExecuteAsync(ds, FindLayer, overall, config, (args) => 
+                {
+                    _logger.LogDebug("진행률 이벤트 발생: {RuleId}, {Progress}%, {Message}", args.CurrentRule, args.OverallProgress, args.StatusMessage);
+                    ProgressUpdated?.Invoke(this, args);
+                }, cancellationToken);
+            }
+            else if (caseType.Equals("PointInsidePolygon", StringComparison.OrdinalIgnoreCase))
+            {
+                // Strategy로 대체됨
                 await Task.Run(() => EvaluateBuildingCenterPoints(ds, FindLayer, overall, fieldFilter, cancellationToken, config), cancellationToken);
             }
             else if (caseType.Equals("LineWithinPolygon", StringComparison.OrdinalIgnoreCase))
             {
+                // Strategy로 대체됨
                 var tol = config.Tolerance ?? _geometryCriteria.LineWithinPolygonTolerance;
                 await Task.Run(() => EvaluateCenterlineInRoadBoundary(ds, FindLayer, overall, tol, fieldFilter, cancellationToken, config), cancellationToken);
             }

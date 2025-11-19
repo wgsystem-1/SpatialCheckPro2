@@ -1,3 +1,5 @@
+G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\Assets\Icons\app.ico
+G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\appsettings.json
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\SpatialCheckPro.GUI.exe
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\Config\1_table_check.csv
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\Config\2_schema_check.csv
@@ -89,7 +91,6 @@ G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\System.IO.Pipe
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\System.Security.Cryptography.Pkcs.dll
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\System.Text.Encodings.Web.dll
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\System.Text.Json.dll
-G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\Xceed.Wpf.Toolkit.NET5.dll
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\runtimes\win-x64\native\libfreexl-1.dll
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\runtimes\win-x64\native\libgcc_s_seh-1.dll
 G:\SpatialCheckPro\SpatialCheckPro.GUI\bin\Release\net8.0-windows\runtimes\win-x64\native\libgeos.dll
@@ -180,6 +181,7 @@ G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\Views\Validati
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\Views\WelcomeView.g.cs
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\Views\WideDashboardView.g.cs
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\App.g.cs
+G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI_Content.g.cs
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\GeneratedInternalTypeHelper.g.cs
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI_MarkupCompile.cache
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI_MarkupCompile.lref
@@ -189,8 +191,6 @@ G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\Views\StageTim
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\Views\ValidationProgressView.baml
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI.g.resources
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI.GeneratedMSBuildEditorConfig.editorconfig
-G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI.AssemblyInfoInputs.cache
-G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI.AssemblyInfo.cs
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI.csproj.CoreCompileInputs.cache
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialCheckPro.GUI.sourcelink.json
 G:\SpatialCheckPro\SpatialCheckPro.GUI\obj\Release\net8.0-windows\SpatialC.F367B7F5.Up2Date

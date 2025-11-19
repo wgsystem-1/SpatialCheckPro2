@@ -5,23 +5,22 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              d:DesignHeight="800" d:DesignWidth="1200"
-             Background="#F9FAFB">
+             Background="White">
 
-    <Grid>
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto" MinHeight="3"/>
         </Grid.RowDefinitions>
 
         <!-- 메인 컨텐츠 -->
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,97,0,0">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,70,0,0">
             <!-- 로고 및 타이틀 -->
             <StackPanel HorizontalAlignment="Center" Margin="0,0,0,40">
                 <!-- 애플리케이션 로고 (중앙에 큰 아이콘으로 표시) -->
+
                 <Image Source="{StaticResource AppLogo}" 
-                       Width="120" Height="120" 
-                       HorizontalAlignment="Center" 
-                       Margin="0,0,0,20"/>
+                       Width="120" Height="120" RenderTransformOrigin="0.0,0.0" Margin="20,20,20,20" HorizontalAlignment="Center"/>
 
                 <TextBlock Text="국가기본도 FileGDB 검수 프로그램" 
                           FontSize="36" 
@@ -30,41 +29,29 @@
                           HorizontalAlignment="Center"
                           FontFamily="HYGothic-Extra"/>
 
-                <TextBlock Text="SpatialCheckPro Ver 1.0" 
-                          FontSize="18" 
+                <TextBlock Text="SpatialCheckPro" 
+                          FontSize="28" 
                           Foreground="#3B82F6" 
                           HorizontalAlignment="Center"
                           FontWeight="SemiBold"
-                          Margin="0,12,0,0"/>
+                          Margin="0,12,0,12" TextAlignment="Center"/>
             </StackPanel>
 
             <!-- 설명 텍스트 -->
             <Border Background="White" 
                    CornerRadius="12" 
                    Padding="32,24"
-                   MaxWidth="700"
-                   Margin="0,0,0,40" Height="169">
+                   MaxWidth="700" Height="120" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,36" Width="450">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.1"/>
                 </Border.Effect>
 
                 <StackPanel>
                     <TextBlock TextWrapping="Wrap" 
-                              FontSize="14" 
+                              FontSize="16" 
                               Foreground="#374151"
                               LineHeight="24"
-                              TextAlignment="Center"><Run Text="본 검수 프로그램은"/><LineBreak/><Run Text="국가기본도 Master DB 모델을 기반으로 개발되었습니다."/></TextBlock>
-
-                    <Border Background="#FEF2F2" 
-                           CornerRadius="6" 
-                           Padding="12,8"
-                           Margin="0,16,0,0" RenderTransformOrigin="0.474,1.67">
-                        <TextBlock Text="⚠️ 국가기본도 수정 사업자 외의 사용을 금합니다." 
-                                  FontSize="14" 
-                                  Foreground="#DC2626"
-                                  TextAlignment="Center"
-                                  FontWeight="Medium"/>
-                    </Border>
+                              TextAlignment="Center" Height="43" HorizontalAlignment="Center" FontFamily="KoPubDotum Medium"><Run Text="본 검수 프로그램은"/><LineBreak/><Run Text="국가기본도 Master DB 데이터 모델을 기반으로 개발되었습니다."/></TextBlock>
                 </StackPanel>
             </Border>
 
@@ -122,7 +109,7 @@
             </Button>
 
             <!-- 도움말 -->
-            <TextBlock Text="💡 왼쪽 메뉴에서 언제든지 다른 기능에 접근할 수 있습니다" 
+            <TextBlock Text="쪽 메뉴에서 언제든지 다른 기능에 접근할 수 있습니다" 
                       FontSize="13" 
                       Foreground="#6B7280"
                       HorizontalAlignment="Center"/>
@@ -161,7 +148,7 @@
                               Foreground="#9CA3AF"
                               VerticalAlignment="Center"
                               Margin="0,0,20,0"/>
-                    <TextBlock Text="© 2024 우리강산시스템" 
+                    <TextBlock Text="© 2025 (주)우리강산시스템" 
                               FontSize="11" 
                               Foreground="#9CA3AF"
                               VerticalAlignment="Center"/>

@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "KlaZ67G+nbg=",
+  "dgSpecHash": "bifLcuSKg1s=",
   "success": true,
-  "projectFilePath": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj",
+  "projectFilePath": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\niceg\\.nuget\\packages\\bouncycastle.cryptography\\2.3.1\\bouncycastle.cryptography.2.3.1.nupkg.sha512",
+    "C:\\Users\\niceg\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.0\\communitytoolkit.mvvm.8.4.0.nupkg.sha512",
     "C:\\Users\\niceg\\.nuget\\packages\\csvhelper\\33.1.0\\csvhelper.33.1.0.nupkg.sha512",
     "C:\\Users\\niceg\\.nuget\\packages\\gdal\\3.10.3\\gdal.3.10.3.nupkg.sha512",
     "C:\\Users\\niceg\\.nuget\\packages\\gdal.native\\3.10.3\\gdal.native.3.10.3.nupkg.sha512",
@@ -80,7 +81,7 @@
     "C:\\Users\\niceg\\.nuget\\packages\\system.text.encoding.codepages\\8.0.0\\system.text.encoding.codepages.8.0.0.nupkg.sha512",
     "C:\\Users\\niceg\\.nuget\\packages\\system.text.encodings.web\\9.0.9\\system.text.encodings.web.9.0.9.nupkg.sha512",
     "C:\\Users\\niceg\\.nuget\\packages\\system.text.json\\9.0.9\\system.text.json.9.0.9.nupkg.sha512",
-    "C:\\Users\\niceg\\.nuget\\packages\\xceed.wpf.toolkit\\4.5.22477.12540\\xceed.wpf.toolkit.4.5.22477.12540.nupkg.sha512"
+    "C:\\Users\\niceg\\.nuget\\packages\\microsoft.netcore.app.crossgen2.win-x64\\8.0.21\\microsoft.netcore.app.crossgen2.win-x64.8.0.21.nupkg.sha512"
   ],
   "logs": []
 }

@@ -309,6 +309,7 @@ namespace SpatialCheckPro.GUI.Services
             
             // GUI 뷰들
             services.AddSingleton<MainWindow>();
+            services.AddSingleton<MainViewModel>();
             services.AddSingleton<StageSummaryCollectionViewModel>();
             services.AddSingleton<ValidationResultView>();
             services.AddSingleton<ValidationSettingsWindow>();
