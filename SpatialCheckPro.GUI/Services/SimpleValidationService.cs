@@ -731,6 +731,20 @@ namespace SpatialCheckPro.GUI.Services
                 _logger.LogInformation("총 소요시간: {ElapsedTime}", result.ProcessingTime);
                 _logger.LogInformation("검수 결과: {IsValid}, 상태: {Status}, 오류: {ErrorCount}개, 경고: {WarningCount}개", 
                     result.IsValid, result.Status, result.ErrorCount, result.WarningCount);
+                
+                                // DataSource 리소스 해제 (배치 처리 시 누적 방지)
+                if (!string.IsNullOrEmpty(filePath))
+                {
+                    try
+                    {
+                        _dataSourcePool.RemoveDataSource(filePath);
+                        _logger.LogDebug("검수 완료 후 DataSource 리소스 해제: {FilePath}", filePath);
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        _logger.LogWarning(cleanupEx, "검수 완료 후 리소스 정리 중 오류 발생: {FilePath}", filePath);
+                    }
+                }
             }
 
             return result;
