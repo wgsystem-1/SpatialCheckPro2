@@ -1,0 +1,11 @@
+  蹂듭썝???꾨줈?앺듃瑜??뺤씤?섎뒗 以?..
+  蹂듭썝??紐⑤뱺 ?꾨줈?앺듃媛 理쒖떊 ?곹깭?낅땲??
+  SpatialCheckPro -> G:\SpatialCheckPro2\SpatialCheckPro\bin\Debug\net8.0\SpatialCheckPro.dll
+  SpatialCheckPro.GUI -> G:\SpatialCheckPro2\SpatialCheckPro.GUI\bin\Debug\net8.0-windows\SpatialCheckPro.GUI.dll
+  GDAL Native ?뚯씪 蹂듭궗 ?꾨즺
+
+鍮뚮뱶?덉뒿?덈떎.
+    寃쎄퀬 0媛?
+    ?ㅻ쪟 0媛?
+
+寃쎄낵 ?쒓컙: 00:00:00.94

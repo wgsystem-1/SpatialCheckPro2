@@ -49,9 +49,13 @@ namespace SpatialCheckPro.GUI.ViewModels
         [ObservableProperty] private bool _enableStage4 = true;
         [ObservableProperty] private bool _enableStage5 = true;
 
-        public MainViewModel(ILogger<MainViewModel> logger)
+        // ValidationSettingsViewModel 참조
+        public ValidationSettingsViewModel? ValidationSettingsViewModel { get; set; }
+
+        public MainViewModel(ILogger<MainViewModel> logger, ValidationSettingsViewModel validationSettingsViewModel)
         {
             _logger = logger;
+            ValidationSettingsViewModel = validationSettingsViewModel;
             
             _timer = new DispatcherTimer();
             _timer.Interval = TimeSpan.FromSeconds(1);

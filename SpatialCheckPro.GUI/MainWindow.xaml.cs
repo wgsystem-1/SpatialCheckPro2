@@ -14,6 +14,7 @@ using SpatialCheckPro.Models.Enums;
 using SpatialCheckPro.GUI.Services;
 using SpatialCheckPro.Constants;
 using System.Runtime.Versioning;
+using SpatialCheckPro.Models.Config;
 
 using SpatialCheckPro.Services;
 using WinForms = System.Windows.Forms;
@@ -24,8 +25,67 @@ using SpatialCheckPro.Services.RemainingTime;
 namespace SpatialCheckPro.GUI
 {
     /// <summary>
+    /// MainWindow.xaml에 대한 상호 작용 논리
+    /// </summary>
+    public partial class MainWindow : Window
+    {
+        private readonly ILogger<MainWindow> _logger;
+        private readonly SimpleValidationService _validationService;
+        private readonly StageSummaryCollectionViewModel _stageSummaryCollectionViewModel;
+        private readonly ValidationSettingsViewModel _validationSettingsViewModel;
+
+        private string? _selectedFilePath;
+        private List<string> _selectedFilePaths = new List<string>();
+        private SpatialCheckPro.Models.ValidationResult? _currentValidationResult;
+        private bool _isValidationRunning;
+        private System.Threading.CancellationTokenSource? _validationCancellationTokenSource;
+        private Views.CompactValidationProgressView? _currentProgressView;
+        private Views.ValidationSettingsView? _validationSettingsView;
+
+        // Config paths (기본값)
+        private string _tableConfigPath = "Configs/TableConfig.json";
+        private string _schemaConfigPath = "Configs/SchemaConfig.json";
+        private string _geometryConfigPath = "Configs/GeometryConfig.json";
+        private string _relationConfigPath = "Configs/RelationConfig.json";
+        private string _attributeConfigPath = "Configs/AttributeConfig.json";
+
+        private DispatcherTimer? _timer;
+
+        public MainWindow(
+            ILogger<MainWindow> logger,
+            SimpleValidationService validationService,
+            StageSummaryCollectionViewModel stageSummaryViewModel,
+            MainViewModel mainViewModel,
+            ValidationSettingsViewModel validationSettingsViewModel)
+        {
+            InitializeComponent();
+            _logger = logger;
+            _validationService = validationService;
+            _stageSummaryCollectionViewModel = stageSummaryViewModel;
+            _validationSettingsViewModel = validationSettingsViewModel;
+            
+            DataContext = mainViewModel;
+            
+            InitializeValidationSettingsView();
+            InitializeDefaultConfigPaths();
+        }
+
+        private void UpdateStatus(string message)
+        {
+            try
+            {
+                _logger?.LogInformation(message);
+            }
+            catch (Exception ex)
+            {
                 System.Diagnostics.Debug.WriteLine($"상태 업데이트 실패: {ex.Message}");
             }
+        }
+
+        private void UpdateNavigationButtons(string currentView)
+        {
+            // Navigation logic placeholder
+            // This method updates the state of navigation buttons based on the current view
         }
 
         /// <summary>
@@ -213,58 +273,18 @@ namespace SpatialCheckPro.GUI
         {
             try
             {
-                // 선택된 파일 분석
-                    try
-                    {
-                        using (var dataSource = OSGeo.OGR.Ogr.Open(_selectedFilePath, 0))
-                        {
-                            if (dataSource != null)
-                            {
-                                tableCount = dataSource.GetLayerCount();
-                                featureCount = 0;
-                                for (int i = 0; i < tableCount; i++)
-                                {
-                                    using (var layer = dataSource.GetLayerByIndex(i))
-                                    {
-                                        if (layer != null)
-                                        {
-                                            featureCount += (int)layer.GetFeatureCount(1);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        _logger?.LogInformation("GDB 분석 완료 - 테이블: {Tables}개, 피처: {Features}개", 
-                            tableCount, featureCount);
-                    }
-                    catch (Exception gdbEx)
-                    {
-                        _logger?.LogWarning(gdbEx, "GDB 분석 실패, 기본값 사용");
-                    }
-                }
-                
-                // 메트릭 수집기에서 예측 시간 가져오기 (우선)
-                Dictionary<int, double>? predictedTimes = null;
-                
-                var metricsCollector = ((App)Application.Current).GetService<ValidationMetricsCollector>();
-                if (metricsCollector != null)
-                {
-                    predictedTimes = metricsCollector.GetStagePredictions(tableCount, featureCount);
-                    _logger?.LogInformation("메트릭 기반 예측 시간 사용");
-                }
-                
-                // 메트릭이 없으면 기존 예측 모델 사용
-                if (predictedTimes == null || predictedTimes.Count == 0)
-                {
-                    var predictor = new Models.ValidationTimePredictor(
-                        Microsoft.Extensions.Logging.Abstractions.NullLogger<Models.ValidationTimePredictor>.Instance);
-                    
-                    predictedTimes = predictor.PredictStageTimes(
-                        tableCount, featureCount, schemaFieldCount,
+                int tableCount = 10;
+                long featureCount = 1000;
+                int schemaFieldCount = 20;
+                int geometryCheckCount = 5;
+                int relationRuleCount = 2;
+                int attributeColumnCount = 10;
+
+                var predictor = new Models.ValidationTimePredictor(Microsoft.Extensions.Logging.Abstractions.NullLogger<Models.ValidationTimePredictor>.Instance);
+                var predictedTimes = predictor.PredictStageTimes(
+                        tableCount, (int)featureCount, schemaFieldCount,
                         geometryCheckCount, relationRuleCount, attributeColumnCount);
-                    _logger?.LogInformation("기본 예측 모델 사용");
-                }
+
                 
                 // 예측 시간 로그
                 _logger?.LogInformation("예측 시간 계산 완료:");
@@ -343,18 +363,90 @@ namespace SpatialCheckPro.GUI
         /// <summary>
         /// 보고서 화면으로 이동합니다
         /// </summary>
-		private void NavigateToReports(object sender, RoutedEventArgs e)
+        private void NavigateToReports(object sender, RoutedEventArgs e)
         {
-			var reportView = new Views.ReportView();
-			
-			// 현재 검수 결과가 있으면 설정
-			if (_currentValidationResult != null)
-			{
-				reportView.SetValidationResult(_currentValidationResult);
+            // 보고서 뷰로 이동
+            var reportView = new Views.ReportView();
+            if (_currentValidationResult != null)
+            {
+                reportView.SetValidationResult(_currentValidationResult);
+            }
+            MainContentContainer.Content = reportView;
+            UpdateNavigationButtons("Reports");
+        }
+        /// <summary>
+        /// 파일 선택 화면을 표시합니다.
+        /// </summary>
+        private void ShowFileSelectionView()
+        {
+            var fileSelectionView = new Views.WelcomeView();
+            MainContentContainer.Content = fileSelectionView;
+            UpdateNavigationButtons("FileSelection");
+        }
 
-        private Views.CompactValidationProgressView? _currentProgressView;
-        private System.Threading.CancellationTokenSource? _validationCancellationTokenSource;
-        private bool _isValidationRunning = false;
+        /// <summary>
+        /// 폴더 선택 대화상자를 열고, 선택 결과에 따라 UI를 새로고침합니다.
+        /// </summary>
+        private void ShowFolderBrowserAndRefresh()
+        {
+            // File Geodatabase 폴더 선택
+            string? selectedPath = null;
+
+            using (var folderDialog = new WinForms.FolderBrowserDialog())
+            {
+                folderDialog.Description = "File Geodatabase(.gdb) 또는 이를 포함한 상위 폴더를 선택하세요";
+                folderDialog.ShowNewFolderButton = false;
+
+                if (folderDialog.ShowDialog() == WinForms.DialogResult.OK)
+                {
+                    var selectedFolder = folderDialog.SelectedPath;
+
+                    // 미리보기 다이얼로그 표시
+                    var previewDialog = new Views.FolderSelectionPreviewDialog(selectedFolder)
+                    {
+                        Owner = this
+                    };
+
+                    if (previewDialog.ShowDialog() == true && previewDialog.IsContinue)
+                    {
+                        // 사용자가 계속하기를 선택한 경우
+                        selectedPath = selectedFolder;
+                        _selectedFilePaths = previewDialog.SelectedGdbPaths;
+
+                        if (_selectedFilePaths.Count == 0)
+                        {
+                            MessageBox.Show(
+                                "검수 대상 FileGDB가 없습니다.",
+                                "대상 없음",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Warning);
+                            return;
+                        }
+
+                        _logger?.LogInformation("폴더 선택 확정 - 대상: {Count}개 FileGDB", _selectedFilePaths.Count);
+                    }
+                    else
+                    {
+                        // 사용자가 취소한 경우
+                        _logger?.LogInformation("사용자가 폴더 선택을 취소했습니다");
+                        return;
+                    }
+                }
+            }
+
+            // 선택된 경로가 있으면 처리
+            if (!string.IsNullOrEmpty(selectedPath))
+            {
+                _selectedFilePath = selectedPath;
+                var fileName = Path.GetFileName(selectedPath);
+                
+                // UI 업데이트
+                UpdateStatus($"선택된 폴더: {fileName}");
+                
+                // 파일 선택 화면 갱신 (선택된 파일 정보 표시)
+                ShowFileSelectionView();
+            }
+        }
 
         /// <summary>
         /// 검수를 시작합니다
@@ -385,44 +477,31 @@ namespace SpatialCheckPro.GUI
             try
             {
                 UpdateStatus("검수를 시작합니다...");
-                // 로그 UI 제거로 주석 처리
-                // progressView.AddLogMessage("검수 시작");
-                // progressView.AddLogMessage($"대상 파일: {_selectedFilePath}");
                 
-                // 검수 시작 시간 초기화 (단계 상세 정보의 처리 속도 계산을 위해)
+                // 검수 시작 시간 초기화
                 progressView.ResetStartTime();
                 var startTime = DateTime.Now;
                 
-                // 소요시간 업데이트 타이머 (1초 간격) - 스무스한 업데이트를 위해 Normal 우선순위 사용
+                // 소요시간 업데이트 타이머
                 var progressTimer = new DispatcherTimer(DispatcherPriority.Normal);
-                progressTimer.Interval = TimeSpan.FromSeconds(1); // 1초 간격
+                progressTimer.Interval = TimeSpan.FromSeconds(1);
                 progressTimer.Tick += (s, e) => 
                 {
                     var elapsed = DateTime.Now - startTime;
-                    // BeginInvoke로 비동기 호출하여 UI 스레드 블로킹 방지 및 스무스한 업데이트 보장
                     Dispatcher.BeginInvoke(new Action(() => progressView.UpdateElapsedTime(elapsed)), DispatcherPriority.Normal);
                 };
                 progressTimer.Start();
 
-                // 검수 서비스의 진행률 이벤트 구독 (정상 해제를 위해 핸들러 보관)
+                // 검수 서비스의 진행률 이벤트 구독
                 int cumulativeErrorCount = 0;
                 progressHandlerLocal = (sender, args) =>
                 {
-                    // Invoke로 동기 호출하여 즉시 반영 (우선순위 높임)
                     Dispatcher.Invoke(() =>
                     {
-                        System.Console.WriteLine($">>> [ProgressHandler] Stage={args.CurrentStage}, StageName={args.StageName}, Progress={args.StageProgress:F1}%, Completed={args.IsStageCompleted}, ProcessedUnits={args.ProcessedUnits}, TotalUnits={args.TotalUnits}");
-                        
-                        // [해결 방향 1] 호출 순서 변경: ApplyProgress를 먼저 호출하여 CompletedStageCount를 먼저 업데이트
-                        // 단계 진행 상황을 StageSummaryCollectionViewModel에 반영 (먼저 호출)
                         _stageSummaryCollectionViewModel.ApplyProgress(args);
                         
-                        // 단계 완료 시 상태 강제 설정
                         if (args.IsStageCompleted)
                         {
-                            System.Console.WriteLine($">>> [ProgressHandler] ✅ 단계 {args.CurrentStage} 완료! PartialResult={args.PartialResult != null}");
-                            System.Console.WriteLine($">>> [ProgressHandler] 단계 상태 업데이트 시작: Stage={args.CurrentStage}");
-                            
                             if (args.IsStageSkipped)
                             {
                                 _stageSummaryCollectionViewModel.ForceStageStatus(args.CurrentStage, StageStatus.Skipped, args.StatusMessage);
@@ -433,7 +512,6 @@ namespace SpatialCheckPro.GUI
                                 _stageSummaryCollectionViewModel.ForceStageStatus(args.CurrentStage, finalStatus, args.StatusMessage);
                             }
 
-                            // 다음 단계 대기 상태 설정
                             var nextStageNumber = args.CurrentStage + 1;
                             var nextStage = _stageSummaryCollectionViewModel.GetStage(nextStageNumber);
                             if (nextStage != null && nextStage.Status == StageStatus.NotStarted)
@@ -441,99 +519,57 @@ namespace SpatialCheckPro.GUI
                                 _stageSummaryCollectionViewModel.ForceStageStatus(nextStageNumber, StageStatus.Pending, "대기 중");
                             }
                             
-                            // 부분 결과 저장 및 진행 화면에 표시
                             if (args.PartialResult != null)
                             {
                                 _currentValidationResult = args.PartialResult;
-                                System.Console.WriteLine($">>> [ProgressHandler] 부분 결과 저장: ErrorCount={_currentValidationResult.ErrorCount}");
-                                
-                                // 진행 화면에 부분 결과 실시간 표시
                                 try
                                 {
                                     progressView.UpdatePartialResults(_currentValidationResult);
-                                    System.Console.WriteLine($">>> [ProgressHandler] UpdatePartialResults 호출 완료");
                                 }
-                                catch (Exception ex)
-                                {
-                                    System.Console.WriteLine($">>> [ProgressHandler] ❌ UpdatePartialResults 오류: {ex.Message}");
-                                }
-                            }
-                            else
-                            {
-                                System.Console.WriteLine($">>> [ProgressHandler] ⚠️ PartialResult가 null!");
+                                catch { }
                             }
                             
-                            // 단계 완료 시 오류 카운트 누적
                             if (args.ErrorCount > 0)
                             {
                                 cumulativeErrorCount += args.ErrorCount;
                                 progressView.UpdateErrorCount(cumulativeErrorCount);
                             }
-                            
-                            // 완료 단계 카운터 확인 (업데이트 후)
-                            var completedCount = _stageSummaryCollectionViewModel.CompletedStageCount;
-                            System.Console.WriteLine($">>> [ProgressHandler] 완료 단계 카운터: {completedCount}/6");
                         }
                         
-                        // 전체 진행률 업데이트 (ApplyProgress 이후에 호출하여 최신 CompletedStageCount 반영)
                         progressView.UpdateProgress(args.OverallProgress, args.StatusMessage);
-                        
-                        // 현재 단계 업데이트
                         progressView.UpdateCurrentStage(args.StageName, args.CurrentStage);
 
-                        // 개별 단계 진행률 갱신
                         try { progressView.UpdateStageProgress(args.CurrentStage, args.StageProgress); } catch { }
                         
-                        // 단위 정보가 제공되면 상세 정보 업데이트 (조건 완화)
                         try
                         {
                             if (args.ProcessedUnits >= 0 && args.TotalUnits >= 0)
                             {
-                                System.Console.WriteLine($">>> [ProgressHandler] UpdateUnits 호출: Stage={args.CurrentStage}, {args.ProcessedUnits}/{args.TotalUnits}");
                                 progressView.UpdateUnits(args.CurrentStage, args.ProcessedUnits, args.TotalUnits);
                             }
-                            else
-                            {
-                                System.Console.WriteLine($">>> [ProgressHandler] ⚠️ 단위 정보 부족: ProcessedUnits={args.ProcessedUnits}, TotalUnits={args.TotalUnits}");
-                            }
                         }
-                        catch (Exception ex)
-                        {
-                            System.Console.WriteLine($">>> [ProgressHandler] ❌ UpdateUnits 오류: {ex.Message}");
-                            _logger?.LogError(ex, "[MainWindow] UpdateUnits 호출 중 오류");
-                        }
-                    }, DispatcherPriority.Render); // Render 우선순위로 즉시 반영
+                        catch { }
+                    }, DispatcherPriority.Render);
                 };
-                System.Console.WriteLine($"[MainWindow] 이벤트 핸들러 연결 전: progressHandlerLocal={progressHandlerLocal != null}");
-                System.Console.WriteLine($"[MainWindow] ValidationService 인스턴스: {_validationService.GetHashCode()}");
                 _validationService.ProgressUpdated += progressHandlerLocal;
-                System.Console.WriteLine($"[MainWindow] 이벤트 핸들러 연결 완료!");
 
-                // 실제 검수 서비스 호출
-                // progressView.AddLogMessage("검수 서비스 실행 중...");
+                var tableConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.TableConfigPath) 
+                    ? _validationSettingsViewModel.TableConfigPath : _tableConfigPath;
+                var schemaConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.SchemaConfigPath) 
+                    ? _validationSettingsViewModel.SchemaConfigPath : _schemaConfigPath;
+                var geometryConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.GeometryConfigPath) 
+                    ? _validationSettingsViewModel.GeometryConfigPath : _geometryConfigPath;
+                var relationConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.RelationConfigPath) 
+                    ? _validationSettingsViewModel.RelationConfigPath : _relationConfigPath;
                 
-                // 사용자 정의 설정 파일이 있으면 우선 사용, 없으면 기본 설정 사용
-                var tableConfig = !string.IsNullOrEmpty(_customTableConfigPath) ? _customTableConfigPath : _tableConfigPath;
-                var schemaConfig = !string.IsNullOrEmpty(_customSchemaConfigPath) ? _customSchemaConfigPath : _schemaConfigPath;
-                var geometryConfig = !string.IsNullOrEmpty(_customGeometryConfigPath) ? _customGeometryConfigPath : _geometryConfigPath;
-                var relationConfig = !string.IsNullOrEmpty(_customRelationConfigPath) ? _customRelationConfigPath : _relationConfigPath;
-                
-                // 사용할 설정 파일 경로 로그 출력
-                // progressView.AddLogMessage($"테이블 설정: {(tableConfig != null ? Path.GetFileName(tableConfig) : "기본값")}");
-                // progressView.AddLogMessage($"스키마 설정: {(schemaConfig != null ? Path.GetFileName(schemaConfig) : "기본값")}");
-                // progressView.AddLogMessage($"지오메트리 설정: {(geometryConfig != null ? Path.GetFileName(geometryConfig) : "기본값")}");
-                // progressView.AddLogMessage($"관계 설정: {(relationConfig != null ? Path.GetFileName(relationConfig) : "기본값")}");
-                
-                // 선택된 검수 항목을 서비스에 전달
-                _validationService._selectedStage1Items = _selectedStage1Items;
-                _validationService._selectedStage2Items = _selectedStage2Items;
-                _validationService._selectedStage3Items = _selectedStage3Items;
-                _validationService._selectedStage4Items = _selectedStage4Items;
-                _validationService._selectedStage5Items = _selectedStage5Items;
+                _validationService._selectedStage1Items = _validationSettingsViewModel.SelectedStage1Items;
+                _validationService._selectedStage2Items = _validationSettingsViewModel.SelectedStage2Items;
+                _validationService._selectedStage3Items = _validationSettingsViewModel.SelectedStage3Items;
+                _validationService._selectedStage4Items = _validationSettingsViewModel.SelectedStage4Items;
+                _validationService._selectedStage5Items = _validationSettingsViewModel.SelectedStage5Items;
                 
                 var token = _validationCancellationTokenSource.Token;
                 
-                // Task.Run을 사용하여 백그라운드 스레드에서 실행
                 _currentValidationResult = await Task.Run(async () => 
                 {
                     return await _validationService.ValidateAsync(
@@ -542,21 +578,17 @@ namespace SpatialCheckPro.GUI
                         schemaConfig, 
                         geometryConfig, 
                         relationConfig,
-                        !string.IsNullOrEmpty(_customAttributeConfigPath) ? _customAttributeConfigPath : _attributeConfigPath,
-                        !string.IsNullOrEmpty(_customCodelistPath) ? _customCodelistPath : null,
+                        !string.IsNullOrEmpty(_validationSettingsViewModel.AttributeConfigPath) 
+                            ? _validationSettingsViewModel.AttributeConfigPath : _attributeConfigPath,
+                        _validationSettingsViewModel.CodelistPath,
                         token);
                 });
 
-                // 완료
                 progressView.UpdateProgress(100, "검수 완료");
-                // progressView.AddLogMessage($"검수 완료 - 결과: {(_currentValidationResult.IsValid ? "성공" : "실패")}");
-                // progressView.AddLogMessage($"오류: {_currentValidationResult.ErrorCount}개, 경고: {_currentValidationResult.WarningCount}개");
-                
                 progressTimer.Stop();
                 
                 UpdateStatus($"검수 완료 - {(_currentValidationResult.IsValid ? "성공" : "실패")}");
                 
-                // 실행 데이터 저장 (예측 모델 개선용)
                 try
                 {
                     await SaveValidationRunData(_currentValidationResult);
@@ -566,7 +598,6 @@ namespace SpatialCheckPro.GUI
                     _logger?.LogWarning(saveEx, "실행 데이터 저장 실패");
                 }
                 
-                // 보고서 자동 생성
                 try
                 {
                     var targetPath = _selectedFilePath ?? string.Empty;
@@ -578,7 +609,6 @@ namespace SpatialCheckPro.GUI
                     MessageBox.Show($"보고서 자동 생성 중 오류: {rex.Message}", "보고서 오류", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
-                // 결과 화면으로 이동
                 NavigateToResults(this, new RoutedEventArgs());
             }
             catch (OperationCanceledException)
@@ -593,7 +623,6 @@ namespace SpatialCheckPro.GUI
             }
             finally
             {
-                // 이벤트 구독 해제: 로컬 핸들러를 안전하게 해제
                 try { if (_validationService != null && progressHandlerLocal != null) _validationService.ProgressUpdated -= progressHandlerLocal; } catch { }
                 
                 _isValidationRunning = false;
@@ -618,13 +647,13 @@ namespace SpatialCheckPro.GUI
                     Timestamp = result.StartedAt,
                     FilePath = result.TargetFile,
                     TableCount = result.TableCheckResult?.TotalTableCount ?? 0,
-                    TotalFeatureCount = 0, // 실제로는 테이블별 피처 수 합계 필요
+                    TotalFeatureCount = 0,
                     SchemaFieldCount = result.SchemaCheckResult?.TotalColumnCount ?? 0,
-                    GeometryCheckItemCount = 232, // 기본 검수 항목 수
-                    RelationRuleCount = 100, // 기본 관계 규칙 수
+                    GeometryCheckItemCount = 232,
+                    RelationRuleCount = 100,
                     AttributeColumnCount = 0,
-                    Stage0Time = 0.2, // FileGDB 검수는 대부분 빠름
-                    Stage1Time = 0, // 개별 단계 시간은 추후 이벤트에서 수집
+                    Stage0Time = 0.2,
+                    Stage1Time = 0,
                     Stage2Time = 0,
                     Stage3Time = 0,
                     Stage4Time = 0,
@@ -632,7 +661,6 @@ namespace SpatialCheckPro.GUI
                     TotalTime = result.ProcessingTime.TotalSeconds
                 };
                 
-                // 테이블별 피처 수 계산
                 if (result.TableCheckResult?.TableResults != null)
                 {
                     runData.TotalFeatureCount = result.TableCheckResult.TableResults
@@ -687,11 +715,7 @@ namespace SpatialCheckPro.GUI
 
             if (_validationService == null)
             {
-                MessageBox.Show("검수 서비스가 초기화되지 않았습니다.\n\n가능한 해결 방법:\n" +
-                    "1. 애플리케이션을 재시작해주세요.\n" +
-                    "2. 관리자 권한으로 실행해보세요.\n" +
-                    "3. 바이러스 백신 프로그램이 차단하지 않는지 확인해주세요.", 
-                    "서비스 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("검수 서비스가 초기화되지 않았습니다.", "서비스 오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -710,52 +734,48 @@ namespace SpatialCheckPro.GUI
             _validationCancellationTokenSource = new System.Threading.CancellationTokenSource();
             _isValidationRunning = true;
 
-            // 배치 진행률 핸들러를 finally에서 해제할 수 있도록 메서드 스코프에 선언
             EventHandler<SpatialCheckPro.GUI.Services.ValidationProgressEventArgs>? batchProgressHandler = null;
 
             try
             {
                 UpdateStatus("배치 검수를 시작합니다...");
-                // progressView.AddLogMessage($"배치 검수 시작 - 대상: {targets.Count}개 .gdb");
 
                 var startTime = DateTime.Now;
-                var progressTimer = new DispatcherTimer(DispatcherPriority.Render); // Render 우선순위로 변경
-                progressTimer.Interval = TimeSpan.FromMilliseconds(100); // 100ms 간격
+                var progressTimer = new DispatcherTimer(DispatcherPriority.Render);
+                progressTimer.Interval = TimeSpan.FromMilliseconds(100);
                 progressTimer.Tick += (s, e) => 
                 {
                     var elapsed = DateTime.Now - startTime;
-                    // Invoke로 동기 호출하여 즉시 반영
                     Dispatcher.Invoke(() => progressView.UpdateElapsedTime(elapsed), DispatcherPriority.Render);
                 };
                 progressTimer.Start();
 
-                // 사용자 정의/기본 설정 파일 경로 결정
-                var tableConfig = !string.IsNullOrEmpty(_customTableConfigPath) ? _customTableConfigPath : _tableConfigPath;
-                var schemaConfig = !string.IsNullOrEmpty(_customSchemaConfigPath) ? _customSchemaConfigPath : _schemaConfigPath;
-                var geometryConfig = !string.IsNullOrEmpty(_customGeometryConfigPath) ? _customGeometryConfigPath : _geometryConfigPath;
-                var relationConfig = !string.IsNullOrEmpty(_customRelationConfigPath) ? _customRelationConfigPath : _relationConfigPath;
-                var attributeConfig = !string.IsNullOrEmpty(_customAttributeConfigPath) ? _customAttributeConfigPath : _attributeConfigPath;
+                var tableConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.TableConfigPath) 
+                    ? _validationSettingsViewModel.TableConfigPath : _tableConfigPath;
+                var schemaConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.SchemaConfigPath) 
+                    ? _validationSettingsViewModel.SchemaConfigPath : _schemaConfigPath;
+                var geometryConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.GeometryConfigPath) 
+                    ? _validationSettingsViewModel.GeometryConfigPath : _geometryConfigPath;
+                var relationConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.RelationConfigPath) 
+                    ? _validationSettingsViewModel.RelationConfigPath : _relationConfigPath;
+                var attributeConfig = !string.IsNullOrEmpty(_validationSettingsViewModel.AttributeConfigPath) 
+                    ? _validationSettingsViewModel.AttributeConfigPath : _attributeConfigPath;
 
                 var token = _validationCancellationTokenSource.Token;
 
                 int total = targets.Count;
                 int index = -1;
 
-                // 진행률 집계 핸들러
                 bool sawStage5Start = false;
                 bool sawStage5Done = false;
                 batchProgressHandler = (sender, args) =>
                 {
-                    // InvokeAsync로 변경하여 UI 스레드 블로킹 방지
                     _ = Dispatcher.InvokeAsync(() =>
                     {
-                        // 현재 파일의 진행률 계산 (0~100%)
                         double currentFileProgress = args.OverallProgress;
-                        // 전체 배치 진행률 계산: (완료된 파일 수 * 100 + 현재 파일 진행률) / 전체 파일 수
                         var completed = Math.Max(0, index);
                         double batchPct = ((completed * 100.0) + currentFileProgress) / Math.Max(1, total);
                         
-                        // 현재 파일명 가져오기
                         var currentFileName = index >= 0 && index < targets.Count 
                             ? System.IO.Path.GetFileName(targets[index]) 
                             : "";
@@ -765,10 +785,8 @@ namespace SpatialCheckPro.GUI
                         progressView.UpdateProgress(batchPct, status);
                         progressView.UpdateCurrentStage(args.StageName, args.CurrentStage);
 
-                        // 개별 단계 진행률 갱신
                         try { progressView.UpdateStageProgress(args.CurrentStage, args.StageProgress); } catch { }
 
-                        // 단위 정보가 제공되면 상세 정보 업데이트
                         try
                         {
                             if (args.ProcessedUnits >= 0 && args.TotalUnits >= 0)
@@ -776,14 +794,8 @@ namespace SpatialCheckPro.GUI
                                 progressView.UpdateUnits(args.CurrentStage, args.ProcessedUnits, args.TotalUnits);
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            _logger?.LogError(ex, "[MainWindow] UpdateUnits 호출 중 오류");
-                        }
+                        catch { }
 
-                        // 5단계 (CurrentStage = 5) 검수 진행 추적
-                        // 단, RelationValidationProgressEventArgs의 CurrentStage는 RelationValidationStage enum이므로,
-                        // 정수 비교가 아닌 실제 전달된 CurrentStage 값이 5인 경우로 확인
                         if (args.CurrentStage == 5)
                         {
                             if (args.StageProgress >= 0) sawStage5Start = true;
@@ -791,7 +803,6 @@ namespace SpatialCheckPro.GUI
                         }
                         _stageSummaryCollectionViewModel.ApplyProgress(args);
 
-                        // 부분 결과 저장 및 진행 화면에 표시 (단계 완료 시)
                         if (args.IsStageCompleted)
                         {
                             if (args.PartialResult != null)
@@ -827,7 +838,6 @@ namespace SpatialCheckPro.GUI
                     var gdbPath = targets[i];
                     var fileName = System.IO.Path.GetFileName(gdbPath);
                     
-                    // 현재 파일 정보를 진행 화면에 표시
                     Dispatcher.Invoke(() =>
                     {
                         progressView.UpdateCurrentFile(i + 1, total, fileName);
@@ -841,7 +851,7 @@ namespace SpatialCheckPro.GUI
                         geometryConfig,
                         relationConfig,
                         attributeConfig,
-                        !string.IsNullOrEmpty(_customCodelistPath) ? _customCodelistPath : null,
+                        _validationSettingsViewModel.CodelistPath,
                         token);
 
                     _currentValidationResult = vr;
@@ -1049,29 +1059,29 @@ namespace SpatialCheckPro.GUI
         /// <param name="settingsWindow">설정 창 인스턴스</param>
         public void ApplyValidationSettingsFromWindow(ValidationSettingsWindow settingsWindow)
         {
-            _customTableConfigPath = settingsWindow.TableConfigPath;
-            _customSchemaConfigPath = settingsWindow.SchemaConfigPath;
-            _customGeometryConfigPath = settingsWindow.GeometryConfigPath;
-            _customRelationConfigPath = settingsWindow.RelationConfigPath;
-            _customAttributeConfigPath = settingsWindow.AttributeConfigPath;
-            _customGeometryCriteriaPath = settingsWindow.GeometryCriteriaPath;
+            _validationSettingsViewModel.TableConfigPath = settingsWindow.TableConfigPath;
+            _validationSettingsViewModel.SchemaConfigPath = settingsWindow.SchemaConfigPath;
+            _validationSettingsViewModel.GeometryConfigPath = settingsWindow.GeometryConfigPath;
+            _validationSettingsViewModel.RelationConfigPath = settingsWindow.RelationConfigPath;
+            _validationSettingsViewModel.AttributeConfigPath = settingsWindow.AttributeConfigPath;
+            _validationSettingsViewModel.GeometryCriteriaPath = settingsWindow.GeometryCriteriaPath;
 
             if (!string.IsNullOrWhiteSpace(settingsWindow.TargetPath))
             {
                 _selectedFilePath = settingsWindow.TargetPath;
             }
 
-            _enableStage1 = settingsWindow.EnableStage1;
-            _enableStage2 = settingsWindow.EnableStage2;
-            _enableStage3 = settingsWindow.EnableStage3;
-            _enableStage4 = settingsWindow.EnableStage4;
-            _enableStage5 = settingsWindow.EnableStage5;
+            _validationSettingsViewModel.EnableStage1 = settingsWindow.EnableStage1;
+            _validationSettingsViewModel.EnableStage2 = settingsWindow.EnableStage2;
+            _validationSettingsViewModel.EnableStage3 = settingsWindow.EnableStage3;
+            _validationSettingsViewModel.EnableStage4 = settingsWindow.EnableStage4;
+            _validationSettingsViewModel.EnableStage5 = settingsWindow.EnableStage5;
 
-            _selectedStage1Items = settingsWindow.SelectedStage1Items;
-            _selectedStage2Items = settingsWindow.SelectedStage2Items;
-            _selectedStage3Items = settingsWindow.SelectedStage3Items;
-            _selectedStage4Items = settingsWindow.SelectedStage4Items;  // 속성 검수 (4단계)
-            _selectedStage5Items = settingsWindow.SelectedStage5Items;  // 공간 관계 검수 (5단계)
+            _validationSettingsViewModel.SelectedStage1Items = settingsWindow.SelectedStage1Items;
+            _validationSettingsViewModel.SelectedStage2Items = settingsWindow.SelectedStage2Items;
+            _validationSettingsViewModel.SelectedStage3Items = settingsWindow.SelectedStage3Items;
+            _validationSettingsViewModel.SelectedStage4Items = settingsWindow.SelectedStage4Items;
+            _validationSettingsViewModel.SelectedStage5Items = settingsWindow.SelectedStage5Items;
         }
 
         /// <summary>

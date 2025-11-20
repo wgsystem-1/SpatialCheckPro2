@@ -399,17 +399,26 @@ namespace SpatialCheckPro.GUI.Views
             }
             else
             {
-                // 행 단위 선택 전달: 체크된 항목만 런타임 대상에 반영
+                // ViewModel을 통해 설정 데이터 전달
                 try
                 {
-                    // internal 필드에 직접 할당 (동일 어셈블리)
-                    main._selectedStage1Items = _stage1Rows.Where(r => r.Use).Select(r => r.Item).ToList();
-                    main._selectedStage2Items = _stage2Rows.Where(r => r.Use).Select(r => r.Item).ToList();
-                    main._selectedStage3Items = _stage3Rows.Where(r => r.Use).Select(r => r.Item).ToList();
-                    main._selectedStage4Items = _stage4Rows.Where(r => r.Use).Select(r => r.Item).ToList();
-                    main._selectedStage5Items = _stage5Rows.Where(r => r.Use).Select(r => r.Item).ToList();
+                    var mainViewModel = main.DataContext as SpatialCheckPro.GUI.ViewModels.MainViewModel;
+                    var viewModel = mainViewModel?.ValidationSettingsViewModel;
+                    
+                    if (viewModel != null)
+                    {
+                        // 선택된 항목 전달 (체크된 항목만)
+                        viewModel.SelectedStage1Items = _stage1Rows.Where(r => r.Use).Select(r => r.Item).ToList();
+                        viewModel.SelectedStage2Items = _stage2Rows.Where(r => r.Use).Select(r => r.Item).ToList();
+                        viewModel.SelectedStage3Items = _stage3Rows.Where(r => r.Use).Select(r => r.Item).ToList();
+                        viewModel.SelectedStage4Items = _stage4Rows.Where(r => r.Use).Select(r => r.Item).ToList();
+                        viewModel.SelectedStage5Items = _stage5Rows.Where(r => r.Use).Select(r => r.Item).ToList();
+                    }
                 }
-                catch { /* 선택 전달 실패는致命아님: 기본 전체 실행 */ }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"설정 전달 실패: {ex.Message}");
+                }
 
                 var msg = "설정이 적용되었습니다. 다음 검수 실행 시 반영됩니다.";
                 if (!string.IsNullOrEmpty(warn)) msg += $"\n\n참고:{warn}";

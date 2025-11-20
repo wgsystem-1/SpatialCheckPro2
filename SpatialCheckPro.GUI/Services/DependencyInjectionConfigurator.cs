@@ -307,10 +307,13 @@ namespace SpatialCheckPro.GUI.Services
             // 알림 집계 서비스
             services.AddSingleton<AlertAggregationService>();
             
-            // GUI 뷰들
-            services.AddSingleton<MainWindow>();
+            // ViewModels
             services.AddSingleton<MainViewModel>();
             services.AddSingleton<StageSummaryCollectionViewModel>();
+            services.AddSingleton<ValidationSettingsViewModel>();
+            
+            // GUI 뷰들
+            services.AddSingleton<MainWindow>();
             services.AddSingleton<ValidationResultView>();
             services.AddSingleton<ValidationSettingsWindow>();
         }
