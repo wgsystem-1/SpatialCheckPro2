@@ -48,34 +48,6 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- 타이틀 -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" 
-                           VerticalAlignment="Center">
-                    <!-- 애플리케이션 로고 (타이틀 텍스트 앞에 표시) -->
-                    <Image Source="{StaticResource AppLogo}" 
-                           Width="24" Height="24" 
-                           Margin="0,0,8,0"
-                           VerticalAlignment="Center"/>
-                    <TextBlock Text="국가기본도 DB 검수 프로그램" 
-                              VerticalAlignment="Center" 
-                              FontWeight="SemiBold" 
-                              FontSize="16"/>
-                    <Border Background="#3B82F6" 
-                           CornerRadius="10" 
-                           Padding="6,2" 
-                           Margin="8,0,0,0">
-                        <TextBlock x:Name="VersionText" Text="v2.1.0" 
-                                  Foreground="White" 
-                                  FontSize="12" 
-                                  FontWeight="SemiBold"/>
-                    </Border>
-                </StackPanel>
-                
-                <!-- 회사 로고 (오른쪽에 표시) -->
-                <Image Grid.Column="2" 
                        Source="{StaticResource CompanyLogo}" 
                        Height="32" 
                        Margin="0,0,16,0"
