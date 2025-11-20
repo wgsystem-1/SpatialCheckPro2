@@ -1,7 +1,7 @@
 ﻿RuleId,Enabled,CaseType,MainTableId,MainTableName,RelatedTableId,RelatedTableName,FieldFilter,Tolerance,Note
 건물중심점_관계,Y,PointInsidePolygon,tn_buld,건물,tn_buld_ctpt,건물중심점,,,건물중심점은 건물을 벗어나면 안 됨
-도로경계면_관계,Y,LineWithinPolygon,tn_rodway_bndry,도로경계면,tn_rodway_ctln,도로중심선,road_se IN (RDS001|RDS002|RDS003|RDS004|RDS005|RDS006|RDS007|RDS008|RDS009|RDS011|RDS012|RDS013|RDS015|RDS016|RDS017|RDS019|RDS020),0.001,중심선은 경계면을 벗어나면 안 됨
-도로시설_관계,Y,PolygonNotWithinPolygon,tn_arrfc,면형도로시설,tn_rodway_bndry,도로경계면,pg_rdfc_se IN (PRC002|PRC003|PRC004|PRC005),0.001,면형도로시설의 버텍스는 도로경계면의 버텍스와 일치해야 함
+도로경계면_관계,Y,LineWithinPolygon,tn_rodway_bndry,도로경계면,tn_rodway_ctln,도로중심선,road_se IN ('RDS001','RDS002','RDS003','RDS004','RDS005','RDS006','RDS007','RDS008','RDS009','RDS011','RDS012','RDS013','RDS015','RDS016','RDS017','RDS019','RDS020'),0.001,중심선은 경계면을 벗어나면 안 됨
+도로시설_관계,Y,PolygonNotWithinPolygon,tn_arrfc,면형도로시설,tn_rodway_bndry,도로경계면,pg_rdfc_se IN ('PRC002','PRC003','PRC004','PRC005'),0.001,면형도로시설의 버텍스는 도로경계면의 버텍스와 일치해야 함
 도로중심선_연결성,Y,LineConnectivity,tn_rodway_ctln,도로중심선,tn_rodway_ctln,도로중심선,,1,끝점 1m 이내 연결 확인(엔더숏/댕글 검출)
 경계면_중심선누락,Y,PolygonMissingLine,tn_rodway_bndry,도로경계면,tn_rodway_ctln,도로중심선,,0.1,경계면 내부에 중심선이 전혀 없는 경우 오류
 건물_도로경계면_침범,Y,PolygonNotOverlap,tn_buld,건물,tn_rodway_bndry,도로경계면,,0.1,겹침 면적 허용 0.1
@@ -30,9 +30,9 @@
 등고선_교차검사,Y,ContourIntersection,tn_ctrln,등고선,tn_ctrln,등고선,,,다른 등고선과 교차 발생 검사
 등고선_꺽임검사,Y,ContourSharpBend,tn_ctrln,등고선,tn_ctrln,등고선,,90,등고선이 90도 미만으로 꺽임 검사
 도로중심선_꺽임검사,Y,RoadSharpBend,tn_rodway_ctln,도로중심선,tn_rodway_ctln,도로중심선,,6,도로중심선이 6도 이하로 꺽임 검사
-교량하천명_일치검사,Y,BridgeRiverNameMatch,tn_arrfc,면형도로시설,tn_river_ctln,하천중심선,pg_rdfc_se IN (PRC002|PRC003|PRC004|PRC005);feat_nm,1,교량과 하천중심선의 하천명이 일치해야 함
-도로시설_경계불일치_확장,Y,PolygonWithinPolygon,tn_arrfc,면형도로시설,tn_rodway_bndry,도로경계면,pg_rdfc_se IN (PRC002|PRC003|PRC004|PRC005|PRC009|PRC010|PRC011|PRC034|PRC035|PRC036|PRC037|PRC046),0.001,교량/터널/입체교차부가 도로경계면에 포함되어야 함
-도로시설_철도경계불일치,Y,PolygonWithinPolygon,tn_arrfc,면형도로시설,tn_rlroad_bndry,철도경계면,pg_rdfc_se IN (PRC002|PRC003|PRC004|PRC005|PRC009|PRC010|PRC011|PRC034|PRC035|PRC036|PRC037|PRC046),0.001,교량/터널/입체교차부가 철도경계면에 포함되어야 함
+교량하천명_일치검사,Y,BridgeRiverNameMatch,tn_arrfc,면형도로시설,tn_river_ctln,하천중심선,pg_rdfc_se IN ('PRC002','PRC003','PRC004','PRC005');feat_nm,1,교량과 하천중심선의 하천명이 일치해야 함
+도로시설_경계불일치_확장,Y,PolygonWithinPolygon,tn_arrfc,면형도로시설,tn_rodway_bndry,도로경계면,pg_rdfc_se IN ('PRC002','PRC003','PRC004','PRC005','PRC009','PRC010','PRC011','PRC034','PRC035','PRC036','PRC037','PRC046'),0.001,교량/터널/입체교차부가 도로경계면에 포함되어야 함
+도로시설_철도경계불일치,Y,PolygonWithinPolygon,tn_arrfc,면형도로시설,tn_rlroad_bndry,철도경계면,pg_rdfc_se IN ('PRC002','PRC003','PRC004','PRC005','PRC009','PRC010','PRC011','PRC034','PRC035','PRC036','PRC037','PRC046'),0.001,교량/터널/입체교차부가 철도경계면에 포함되어야 함
 실폭하천_하천경계누락,Y,PolygonContainsLine,tn_river_bt,실폭하천,tn_river_bndry,하천경계,,0.1,실폭하천에 하천경계가 포함되어야 함
 경지경계_내부객체검사,Y,PolygonContainsObjects,tn_fmlnd_bndry,경지경계,*,모든객체,,0,경지경계 내부에 포함되거나 겹치는 객체 검사
 홀겹침_객체검사,Y,HoleDuplicateCheck,*,모든폴리곤,*,모든객체,,0.001,홀과 동일한 객체 존재 여부 검사

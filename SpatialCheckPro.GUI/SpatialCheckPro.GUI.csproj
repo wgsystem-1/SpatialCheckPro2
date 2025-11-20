@@ -8,7 +8,7 @@
     <Nullable>disable</Nullable>
     <!-- 소스 파일 인코딩: UTF-8 (BOM 없음) -->
     <Charset>UTF-8</Charset>
-    <NoWarn>CS8632;CS8602;CS8601;CS8604;CS8618;CS0618;CS1998</NoWarn>
+    <NoWarn>CS8632;CS8602;CS8601;CS8604;CS8618;CS0618;CS1998;CA1416;CS0649</NoWarn>
     <!-- 지침서 준수: 빌드 경고 완전 제거 -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningsAsErrors />
