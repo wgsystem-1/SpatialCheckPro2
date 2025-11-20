@@ -40,3 +40,12 @@ Thumbs.db
 
 # Local settings
 appsettings.Development.json
+
+# Build logs and temporary files
+build_*.txt
+warnings.txt
+*.log
+
+# Sample data and publish folders
+publish/
+Sample/
