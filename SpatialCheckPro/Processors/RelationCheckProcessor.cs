@@ -76,6 +76,9 @@ namespace SpatialCheckPro.Processors
                 _cacheTimestamps, 
                 _geometryCriteria.LineWithinPolygonTolerance);
             _strategies.Add(lineWithinStrategy.CaseType, lineWithinStrategy);
+
+            var polygonBoundaryMatchStrategy = new PolygonBoundaryMatchStrategy(_logger);
+            _strategies.Add(polygonBoundaryMatchStrategy.CaseType, polygonBoundaryMatchStrategy);
         }
 
         /// <summary>

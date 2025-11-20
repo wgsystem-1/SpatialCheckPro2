@@ -39,7 +39,7 @@
 소로_미연결검사,Y,LineConnectivityWithFilter,tn_rodway_ctln,도로중심선,tn_rodway_ctln,도로중심선,road_se=RDS014,1,소로가 도로중심선과 연결되어야 함
 도로중심선_단절검사,Y,LineDisconnection,tn_rodway_ctln,도로중심선,tn_rodway_ctln,도로중심선,,1,도로중심선이 중간에 단절된 경우 검사
 도로경계선_단절검사,Y,LineDisconnectionWithAttribute,tn_rodway_bndryln,도로경계선,tn_rodway_bndryln,도로경계선,road_se,1,동일 ROAD_SE를 가진 도로경계선이 단절 검사
-도로면형_경계선불일치,Y,PolygonBoundaryMatch,tn_rodway_bndry,도로경계면,tn_rodway_bndryln,도로경계선,,0.1,도로 면형과 경계선이 일치해야 함
+도로면형_경계선불일치,Y,PolygonBoundaryMatch,tn_rodway_bndryln,도로경계선,tn_rodway_bndry,도로경계면,,0.1,도로 면형과 경계선이 일치해야 함
 선형끝점_초과미달검사,Y,LineEndpointWithinPolygon,tn_rodway_ctln,도로중심선,tn_rodway_bndry,도로경계면,,0.3,중심선 끝점이 경계면 내부에 포함되어야 함
 선형끝점_초과미달검사_철도,Y,LineEndpointWithinPolygon,tn_rlroad_ctln,철도중심선,tn_rlroad_bndry,철도경계면,,0.3,철도중심선 끝점이 철도경계면 내부에 포함되어야 함
 선형끝점_초과미달검사_하천,Y,LineEndpointWithinPolygon,tn_river_ctln,하천중심선,tn_river_bndry,하천경계,,0.3,하천중심선 끝점이 하천경계 내부에 포함되어야 함
