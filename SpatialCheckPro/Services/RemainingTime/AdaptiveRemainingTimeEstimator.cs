@@ -241,20 +241,22 @@ namespace SpatialCheckPro.Services.RemainingTime
         /// <returns>적응형 알파값</returns>
         private double GetAdaptiveAlpha(StageEtaInternalState state, double progressPercent)
         {
-            // 초기 단계 (0-20%): 높은 alpha로 빠른 적응
+            // [개선] 변동성을 줄이기 위해 Alpha 값을 전체적으로 하향 조정
+            
+            // 초기 단계 (0-20%): 데이터가 적을 때 튀는 현상 방지 (0.6 -> 0.2)
             if (progressPercent < 20 || state.RecentUnitRates.Count < 5)
             {
-                return 0.6;
+                return 0.2;
             }
 
-            // 중기 (20-70%): 표준 alpha로 균형 잡힌 스무딩
+            // 중기 (20-70%): 안정적인 스무딩 (0.35 -> 0.1)
             if (progressPercent < 70)
             {
-                return 0.35;
+                return 0.1;
             }
 
-            // 후기 (70-100%): 낮은 alpha로 안정화
-            return 0.15;
+            // 후기 (70-100%): 매우 안정적으로 수렴 (0.15 -> 0.05)
+            return 0.05;
         }
 
         private void UpdateUnitRate(StageEtaInternalState state, long processedUnits, double elapsedSeconds)
@@ -272,18 +274,40 @@ namespace SpatialCheckPro.Services.RemainingTime
 
             state.LastProcessedUnits = processedUnits;
 
-            // 적응형 알파값 사용
-            var alpha = GetAdaptiveAlpha(state, state.LastProgressPercent);
-
-            state.SmoothedUnitRate = state.SmoothedUnitRate <= 0
-                ? rate
-                : alpha * rate + (1 - alpha) * state.SmoothedUnitRate;
-
+            // 1. 최근 샘플에 추가
             state.RecentUnitRates.Add(rate);
-            if (state.RecentUnitRates.Count > 30)
+            if (state.RecentUnitRates.Count > 20) // 윈도우 크기 조정
             {
                 state.RecentUnitRates.RemoveAt(0);
             }
+
+            // 2. [개선] 중앙값(Median) 계산 - 이상치(Outlier) 제거 효과
+            // 순간적으로 처리가 빠르거나 느려질 때 전체 예측 시간이 출렁이는 것을 방지함
+            double targetRate;
+            var count = state.RecentUnitRates.Count;
+            if (count == 0)
+            {
+                targetRate = rate;
+            }
+            else
+            {
+                var sortedRates = state.RecentUnitRates.OrderBy(r => r).ToList();
+                if (count % 2 == 1)
+                {
+                    targetRate = sortedRates[count / 2];
+                }
+                else
+                {
+                    targetRate = (sortedRates[count / 2 - 1] + sortedRates[count / 2]) / 2.0;
+                }
+            }
+
+            // 3. 적응형 알파값 사용 (중앙값에 대해 적용)
+            var alpha = GetAdaptiveAlpha(state, state.LastProgressPercent);
+
+            state.SmoothedUnitRate = state.SmoothedUnitRate <= 0
+                ? targetRate
+                : alpha * targetRate + (1 - alpha) * state.SmoothedUnitRate;
         }
 
         private void UpdateProgressRate(StageEtaInternalState state, double progressPercent, double elapsedSeconds)

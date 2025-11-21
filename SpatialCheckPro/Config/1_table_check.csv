@@ -35,7 +35,6 @@ tn_rft_fclty,옥상시설물,POLYGON,EPSG:5179
 tn_ctrln,등고선,LINESTRING,EPSG:5179
 tn_shorline,해안선,LINESTRING,EPSG:5179
 tn_alpt,표고점,POINT,EPSG:5179
-tn_isobath,등심선,LINESTRING,EPSG:5179
 tn_ptpgr,점형지형,POINT,EPSG:5179
 tn_lnpgr,선형지형,LINESTRING,EPSG:5179
 tn_arpgr,면형지형,POLYGON,EPSG:5179

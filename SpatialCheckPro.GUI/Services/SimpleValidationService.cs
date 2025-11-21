@@ -2282,18 +2282,21 @@ namespace SpatialCheckPro.GUI.Services
             return await Task.Run(() =>
             {
                 var configs = new List<SpatialCheckPro.Models.Config.AttributeCheckConfig>();
-                
+        
                 try
                 {
                     using var reader = new StreamReader(configPath);
                     using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-                    configs = csv.GetRecords<SpatialCheckPro.Models.Config.AttributeCheckConfig>().ToList();
-            }
-            catch (Exception ex)
-            {
+                    configs = csv.GetRecords<SpatialCheckPro.Models.Config.AttributeCheckConfig>()
+                        .Where(c => !c.RuleId.StartsWith("#"))
+                        .ToList();
+                    _logger.LogInformation("속성 설정 로드 완료: {Count}개 (#으로 시작하는 규칙 제외)", configs.Count);
+                }
+                catch (Exception ex)  // ← 이 부분이 필요합니다!
+                {
                     _logger.LogError(ex, "속성 설정 로드 중 오류 발생: {Path}", configPath);
                 }
-                
+        
                 return configs;
             });
         }
@@ -2318,8 +2321,10 @@ namespace SpatialCheckPro.GUI.Services
                         TrimOptions = CsvHelper.Configuration.TrimOptions.Trim
                     });
                     
-                    configs = csv.GetRecords<SpatialCheckPro.Models.Config.RelationCheckConfig>().ToList();
-                    _logger.LogInformation("관계 검수 설정 로드 완료: {Count}개 규칙", configs.Count);
+                    configs = csv.GetRecords<SpatialCheckPro.Models.Config.RelationCheckConfig>()
+                        .Where(c => !c.RuleId.StartsWith("#"))
+                        .ToList();
+                    _logger.LogInformation("관계 검수 설정 로드 완료: {Count}개 규칙 (#으로 시작하는 규칙 제외)", configs.Count);
                 }
                 catch (Exception ex)
                 {

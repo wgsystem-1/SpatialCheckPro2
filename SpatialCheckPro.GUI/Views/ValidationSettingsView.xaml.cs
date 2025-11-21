@@ -1233,61 +1233,6 @@ namespace SpatialCheckPro.GUI.Views
         }
 
         /// <summary>
-        /// 벤치마크 실행 버튼 클릭 이벤트
-        /// </summary>
-        // private async void RunBenchmark_Click(object sender, RoutedEventArgs e)
-        // {
-        //     try
-        //     {
-        //         if (_benchmarkService == null)
-        //         {
-        //             MessageBox.Show("벤치마크 서비스가 초기화되지 않았습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Warning);
-        //             return;
-        //         }
-
-        //         // 샘플 GDB 파일 경로 (실제 환경에서는 사용자가 선택)
-        //         var sampleGdbPath = @"G:\SpatialCheckPro\sample.gdb";
-                
-        //         if (!File.Exists(sampleGdbPath.Replace(".gdb", "")))
-        //         {
-        //             MessageBox.Show($"샘플 GDB 파일을 찾을 수 없습니다: {sampleGdbPath}", "오류", MessageBoxButton.OK, MessageBoxImage.Warning);
-        //             return;
-        //         }
-
-        //         BenchmarkStatusText.Text = "벤치마크 실행 중...";
-        //         BenchmarkStatusText.Foreground = System.Windows.Media.Brushes.Orange;
-        //         RunBenchmarkButton.IsEnabled = false;
-
-        //         var result = await Task.Run(() => _benchmarkService.RunFullBenchmarkAsync(sampleGdbPath));
-
-        //         _lastBenchmarkResult = result;
-
-        //         if (string.IsNullOrEmpty(result.ErrorMessage))
-        //         {
-        //             BenchmarkStatusText.Text = $"벤치마크 완료 - 종합 점수: {result.OverallScore:F1}/100";
-        //             BenchmarkStatusText.Foreground = System.Windows.Media.Brushes.Green;
-                    
-        //             // 성능 정보 업데이트
-        //             UpdatePerformanceInfoWithBenchmark(result);
-        //         }
-        //         else
-        //         {
-        //             BenchmarkStatusText.Text = $"벤치마크 실패: {result.ErrorMessage}";
-        //             BenchmarkStatusText.Foreground = System.Windows.Media.Brushes.Red;
-        //         }
-
-        //         RunBenchmarkButton.IsEnabled = true;
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         BenchmarkStatusText.Text = $"벤치마크 실행 중 오류 발생: {ex.Message}";
-        //         BenchmarkStatusText.Foreground = System.Windows.Media.Brushes.Red;
-        //         RunBenchmarkButton.IsEnabled = true;
-        //         MessageBox.Show($"벤치마크 실행 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-        //     }
-        // }
-
-        /// <summary>
         /// 벤치마크 결과 내보내기 버튼 클릭 이벤트
         /// </summary>
         private async void ExportBenchmark_Click(object sender, RoutedEventArgs e)

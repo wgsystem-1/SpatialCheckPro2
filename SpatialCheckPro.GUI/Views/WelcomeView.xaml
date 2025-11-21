@@ -5,29 +5,29 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              d:DesignHeight="800" d:DesignWidth="1200"
-             Background="White">
+             Background="White" HorizontalAlignment="Center" VerticalAlignment="Center">
 
-    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Background="White">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto" MinHeight="3"/>
         </Grid.RowDefinitions>
 
         <!-- 메인 컨텐츠 -->
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,70,0,0">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,70,0,0" Background="White">
             <!-- 로고 및 타이틀 -->
-            <StackPanel HorizontalAlignment="Center" Margin="0,0,0,40">
+            <StackPanel HorizontalAlignment="Center" Margin="0,0,0,40" Background="White">
                 <!-- 애플리케이션 로고 (중앙에 큰 아이콘으로 표시) -->
 
                 <Image Source="{StaticResource AppLogo}" 
                        Width="120" Height="120" RenderTransformOrigin="0.0,0.0" Margin="20,20,20,20" HorizontalAlignment="Center"/>
 
                 <TextBlock Text="국가기본도 FileGDB 검수 프로그램" 
-                          FontSize="36" 
+                          FontSize="34" 
                           FontWeight="Bold" 
                           Foreground="#1F2937" 
                           HorizontalAlignment="Center"
-                          FontFamily="HYGothic-Extra"/>
+                          FontFamily="HYGothic-Extra" Width="599" Height="39" TextAlignment="Center"/>
 
                 <TextBlock Text="SpatialCheckPro" 
                           FontSize="28" 
@@ -46,73 +46,18 @@
                     <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.1"/>
                 </Border.Effect>
 
-                <StackPanel>
+                <StackPanel Background="White">
                     <TextBlock TextWrapping="Wrap" 
-                              FontSize="16" 
+                              FontSize="14" 
                               Foreground="#374151"
                               LineHeight="24"
-                              TextAlignment="Center" Height="43" HorizontalAlignment="Center" FontFamily="KoPubDotum Medium"><Run Text="본 검수 프로그램은"/><LineBreak/><Run Text="국가기본도 Master DB 데이터 모델을 기반으로 개발되었습니다."/></TextBlock>
+                              TextAlignment="Center" Height="40" HorizontalAlignment="Center" FontFamily="KoPubDotum Medium" FontWeight="Bold" Width="421" Background="White"><Run Text="본 검수 프로그램은"/><LineBreak/><Run Text="국가기본도 Master DB 데이터 모델을 기반으로 개발되었습니다."/></TextBlock>
                 </StackPanel>
             </Border>
 
             <!-- 빠른 시작 버튼 -->
-            <Button x:Name="QuickStartButton" 
-                   Click="QuickStartButton_Click"
-                   Cursor="Hand"
-                   Padding="32,16"
-                   Margin="0,0,0,20">
-                <Button.Style>
-                    <Style TargetType="Button">
-                        <Setter Property="Background">
-                            <Setter.Value>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#3B82F6" Offset="0"/>
-                                    <GradientStop Color="#2563EB" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Setter.Value>
-                        </Setter>
-                        <Setter Property="Foreground" Value="White"/>
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}"
-                                           CornerRadius="8"
-                                           Padding="{TemplateBinding Padding}">
-                                        <Border.Effect>
-                                            <DropShadowEffect BlurRadius="12" ShadowDepth="4" Opacity="0.2" Color="#3B82F6"/>
-                                        </Border.Effect>
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background">
-                                                <Setter.Value>
-                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                                        <GradientStop Color="#2563EB" Offset="0"/>
-                                                        <GradientStop Color="#1D4ED8" Offset="1"/>
-                                                    </LinearGradientBrush>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </Button.Style>
-
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="📂" FontSize="24" Margin="0,0,12,0"/>
-                    <TextBlock Text="폴더 선택하여 검수 시작" FontSize="18" FontWeight="SemiBold"/>
-                </StackPanel>
-            </Button>
 
             <!-- 도움말 -->
-            <TextBlock Text="쪽 메뉴에서 언제든지 다른 기능에 접근할 수 있습니다" 
-                      FontSize="13" 
-                      Foreground="#6B7280"
-                      HorizontalAlignment="Center"/>
         </StackPanel>
 
         <!-- 하단 정보 -->

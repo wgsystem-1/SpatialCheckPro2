@@ -1,17 +1,13 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "G:\\SpatialCheckPro\\",
+  "WorkspaceRootPath": "G:\\SpatialCheckPro2\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro\\spatialcheckpro.gui\\views\\welcomeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro2\\spatialcheckpro.gui\\views\\welcomeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|solutionrelative:spatialcheckpro.gui\\views\\welcomeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro\\spatialcheckpro.gui\\views\\validationresultview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
-      "RelativeMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|solutionrelative:spatialcheckpro.gui\\views\\validationresultview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro\\spatialcheckpro.gui\\app.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro2\\spatialcheckpro.gui\\app.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|solutionrelative:spatialcheckpro.gui\\app.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     }
   ],
@@ -26,11 +22,11 @@
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 1,
               "Title": "App.xaml",
-              "DocumentMoniker": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\App.xaml",
+              "DocumentMoniker": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\App.xaml",
               "RelativeDocumentMoniker": "SpatialCheckPro.GUI\\App.xaml",
-              "ToolTip": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\App.xaml",
+              "ToolTip": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\App.xaml",
               "RelativeToolTip": "SpatialCheckPro.GUI\\App.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
               "WhenOpened": "2025-11-18T16:39:02.262Z",
@@ -40,24 +36,12 @@
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "WelcomeView.xaml",
-              "DocumentMoniker": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
+              "DocumentMoniker": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
               "RelativeDocumentMoniker": "SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
-              "ToolTip": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
+              "ToolTip": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
               "RelativeToolTip": "SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
               "WhenOpened": "2025-11-18T16:33:26.745Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "ValidationResultView.xaml",
-              "DocumentMoniker": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\Views\\ValidationResultView.xaml",
-              "RelativeDocumentMoniker": "SpatialCheckPro.GUI\\Views\\ValidationResultView.xaml",
-              "ToolTip": "G:\\SpatialCheckPro\\SpatialCheckPro.GUI\\Views\\ValidationResultView.xaml",
-              "RelativeToolTip": "SpatialCheckPro.GUI\\Views\\ValidationResultView.xaml",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
-              "WhenOpened": "2025-11-17T21:09:43.532Z",
               "EditorCaption": ""
             }
           ]

@@ -273,12 +273,45 @@ namespace SpatialCheckPro.GUI
         {
             try
             {
-                int tableCount = 10;
-                long featureCount = 1000;
+                int tableCount = 0;
+                long featureCount = 0;
                 int schemaFieldCount = 20;
                 int geometryCheckCount = 5;
                 int relationRuleCount = 2;
                 int attributeColumnCount = 10;
+
+                // 실제 데이터 통계 수집 (비동기)
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        var targetPath = _selectedFilePath;
+                        if (!string.IsNullOrEmpty(targetPath) && Directory.Exists(targetPath))
+                        {
+                            using var ds = OSGeo.OGR.Ogr.Open(targetPath, 0);
+                            if (ds != null)
+                            {
+                                tableCount = ds.GetLayerCount();
+                                for (int i = 0; i < tableCount; i++)
+                                {
+                                    using var layer = ds.GetLayerByIndex(i);
+                                    if (layer != null)
+                                    {
+                                        featureCount += layer.GetFeatureCount(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "GDB 통계 수집 실패, 기본값 사용");
+                    }
+                });
+
+                // 값이 0이면 기본값 사용
+                if (tableCount == 0) tableCount = 10;
+                if (featureCount == 0) featureCount = 1000;
 
                 var predictor = new Models.ValidationTimePredictor(Microsoft.Extensions.Logging.Abstractions.NullLogger<Models.ValidationTimePredictor>.Instance);
                 var predictedTimes = predictor.PredictStageTimes(
@@ -306,10 +339,20 @@ namespace SpatialCheckPro.GUI
                     metadata[$"StageName_{definition.StageNumber}"] = definition.StageName;
                 }
 
+                long fileSizeBytes = 0;
+                if (!string.IsNullOrEmpty(_selectedFilePath) && Directory.Exists(_selectedFilePath))
+                {
+                    try
+                    {
+                        fileSizeBytes = new DirectoryInfo(_selectedFilePath).EnumerateFiles("*", SearchOption.AllDirectories).Sum(fi => fi.Length);
+                    }
+                    catch { }
+                }
+
                 var context = new SpatialCheckPro.Services.RemainingTime.Models.ValidationRunContext
                 {
                     TargetFilePath = _selectedFilePath,
-                    FileSizeBytes = File.Exists(_selectedFilePath) ? new FileInfo(_selectedFilePath).Length : 0,
+                    FileSizeBytes = fileSizeBytes,
                     FeatureCount = featureCount,
                     LayerCount = tableCount,
                     Metadata = metadata
