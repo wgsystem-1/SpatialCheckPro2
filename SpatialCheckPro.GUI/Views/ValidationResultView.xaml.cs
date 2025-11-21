@@ -891,6 +891,19 @@ namespace SpatialCheckPro.GUI.Views
             {
                 var errors = relationCheckResult.Errors ?? new List<SpatialCheckPro.Models.ValidationError>();
 
+                // AttributeRelationCheckResult에서 ErrorType.Relation 오류 병합 (Stage 5에 표시)
+                if (_validationResult.AttributeRelationCheckResult?.Errors != null)
+                {
+                    var relationErrorsFromStage4 = _validationResult.AttributeRelationCheckResult.Errors
+                        .Where(e => e.ErrorType == SpatialCheckPro.Models.Enums.ErrorType.Relation)
+                        .ToList();
+                    
+                    if (relationErrorsFromStage4.Any())
+                    {
+                        errors.AddRange(relationErrorsFromStage4);
+                        _logger?.LogInformation("Stage 4에서 {Count}개의 ErrorType.Relation 오류를 Stage 5에 병합", relationErrorsFromStage4.Count);
+                    }
+                }
                 // 검사된 규칙 수 표시 (먼저 처리하여 UI에 반영)
                 try
                 {
