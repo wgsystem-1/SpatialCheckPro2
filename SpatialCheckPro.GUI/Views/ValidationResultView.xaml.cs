@@ -739,6 +739,7 @@ namespace SpatialCheckPro.GUI.Views
                     }
 
                     var attrItems = attributes
+                            .Where(w => w.ErrorType != SpatialCheckPro.Models.Enums.ErrorType.Relation) // REL_ 오류 제외
                             .Select(w => new AttributeRelationErrorItem
                             {
                                 TableName = string.IsNullOrWhiteSpace(w.TableName) ? (w.SourceTable ?? string.Empty) : w.TableName,
