@@ -1321,7 +1321,9 @@ namespace SpatialCheckPro.GUI.Services
                 {
                     using var reader = new StreamReader(configPath);
                     using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-                    configs = csv.GetRecords<SpatialCheckPro.Models.Config.TableCheckConfig>().ToList();
+                    configs = csv.GetRecords<SpatialCheckPro.Models.Config.TableCheckConfig>()
+                        .Where(c => !c.TableId.TrimStart().StartsWith("#"))
+                        .ToList();
                 }
                 catch (Exception ex)
                 {

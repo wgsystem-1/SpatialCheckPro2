@@ -665,6 +665,9 @@ namespace SpatialCheckPro.Processors
                 return;
             }
 
+            // SQL 스타일 필터 파싱 - 메모리 필터링용 (GDAL FileGDB 드라이버가 IN/NOT IN을 제대로 지원하지 않음)
+            var (isNotIn, filterValues) = ParseSqlStyleFilter(fieldFilter, "road_se");
+
             // 필드 필터 적용 (RelatedTableId에만 적용: TN_RODWAY_CTLN)
             using var _attrFilterRestore = ApplyAttributeFilterIfMatch(centerline, fieldFilter);
 
@@ -677,27 +680,13 @@ namespace SpatialCheckPro.Processors
             // 필터 적용 후 피처 개수 확인
             centerline.ResetReading();
             var totalFeatures = centerline.GetFeatureCount(1);
-            _logger.LogInformation("도로중심선 필터 적용 후 피처 수: {Count}, 원본필터: {Filter}", totalFeatures, fieldFilter);
-            
-            // 필터 적용 전후 비교를 위한 로깅
-            centerline.ResetReading();
-            var sampleRoadSeValues = new List<string>();
-            Feature? sampleF;
-            int sampleCount = 0;
-            while ((sampleF = centerline.GetNextFeature()) != null && sampleCount < 10)
-            {
-                using (sampleF)
-                {
-                    var roadSe = sampleF.GetFieldAsString("road_se") ?? string.Empty;
-                    sampleRoadSeValues.Add(roadSe);
-                    sampleCount++;
-                }
-            }
-            _logger.LogInformation("필터 적용 후 샘플 ROAD_SE 값들: {Values}", string.Join(", ", sampleRoadSeValues));
+            _logger.LogInformation("도로중심선 필터 적용: 피처수={Count}, 원본필터={Filter}, 메모리필터={MemFilter}", 
+                totalFeatures, fieldFilter, filterValues.Count > 0 ? $"{(isNotIn ? "NOT IN" : "IN")}({string.Join(",", filterValues)})" : "없음");
 
             centerline.ResetReading();
             Feature? lf;
             var processedCount = 0;
+            var skippedCount = 0;
             while ((lf = centerline.GetNextFeature()) != null)
             {
                 token.ThrowIfCancellationRequested();
@@ -708,11 +697,19 @@ namespace SpatialCheckPro.Processors
                 }
                 using (lf)
                 {
+                    var roadSe = GetFieldValueSafe(lf, "road_se") ?? string.Empty;
+                    
+                    // 메모리 필터링: 조건을 만족하지 않으면 스킵 (대소문자 무시)
+                    if (!ShouldIncludeByFilter(roadSe, isNotIn, filterValues))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
                     var lg = lf.GetGeometryRef();
                     if (lg == null) continue;
 
                     var oid = lf.GetFID().ToString(CultureInfo.InvariantCulture);
-                    var roadSe = lf.GetFieldAsString("road_se") ?? string.Empty;
                     
                     _logger.LogDebug("도로중심선 피처 처리: OID={OID}, ROAD_SE={RoadSe}", oid, roadSe);
                     
@@ -792,6 +789,9 @@ namespace SpatialCheckPro.Processors
                 return;
             }
 
+            // SQL 스타일 필터 파싱 - 메모리 필터링용 (GDAL FileGDB 드라이버가 IN/NOT IN을 제대로 지원하지 않음)
+            var (isNotIn, filterValues) = ParseSqlStyleFilter(fieldFilter, "pg_rdfc_se");
+
             // 필드 필터 적용 (MainTableId에만 적용: TN_ARRFC)
             using var _attrFilterRestore = ApplyAttributeFilterIfMatch(arrfc, fieldFilter);
 
@@ -801,15 +801,16 @@ namespace SpatialCheckPro.Processors
             // 위상 정리: MakeValid 사용
             try { boundaryUnion = boundaryUnion.MakeValid(Array.Empty<string>()); } catch { }
 
-            // 필터가 이미 적용되어 있으므로 (PG_RDFC_SE IN (...)) 
-            // 필터를 통과한 피처만 처리됨
             arrfc.ResetReading();
             var totalFeatures = arrfc.GetFeatureCount(1);
-            _logger.LogInformation("면형도로시설 필터 적용 후 피처 수: {Count}, 필터: {Filter}", totalFeatures, fieldFilter);
+            _logger.LogInformation("면형도로시설 필터 적용: 피처수={Count}, 필터={Filter}, 메모리필터={MemFilter}", 
+                totalFeatures, fieldFilter, 
+                filterValues.Count > 0 ? $"{(isNotIn ? "NOT IN" : "IN")}({string.Join(",", filterValues)})" : "없음");
 
             arrfc.ResetReading();
             Feature? pf;
             var processedCount = 0;
+            var skippedCount = 0;
             while ((pf = arrfc.GetNextFeature()) != null)
             {
                 token.ThrowIfCancellationRequested();
@@ -820,10 +821,18 @@ namespace SpatialCheckPro.Processors
                 }
                 using (pf)
                 {
+                    var code = pf.GetFieldAsString("PG_RDFC_SE") ?? string.Empty;
+                    
+                    // 메모리 필터링: 조건을 만족하지 않으면 스킵
+                    if (!ShouldIncludeByFilter(code, isNotIn, filterValues))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
                     var pg = pf.GetGeometryRef();
                     if (pg == null) continue;
 
-                    var code = pf.GetFieldAsString("PG_RDFC_SE") ?? string.Empty;
                     var oid = pf.GetFID().ToString(CultureInfo.InvariantCulture);
                     _logger.LogDebug("면형도로시설 검증: OID={OID}, PG_RDFC_SE={Code}", oid, code);
 
@@ -1562,6 +1571,78 @@ namespace SpatialCheckPro.Processors
             return identifiers;
         }
 
+        /// <summary>
+        /// SQL 스타일 필터 문자열에서 IN/NOT IN 절의 값들을 파싱합니다.
+        /// GDAL FileGDB 드라이버가 IN/NOT IN을 제대로 지원하지 않으므로 메모리 필터링에 사용합니다.
+        /// </summary>
+        /// <param name="fieldFilter">필터 문자열 (예: "road_se NOT IN ('RDS010','RDS011')")</param>
+        /// <param name="fieldName">추출할 필드명 (예: "road_se", "pg_rdfc_se")</param>
+        /// <returns>(isNotIn, values) - NOT IN이면 true, IN이면 false, 값들의 HashSet</returns>
+        private (bool isNotIn, HashSet<string> values) ParseSqlStyleFilter(string fieldFilter, string fieldName)
+        {
+            var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool isNotIn = false;
+
+            if (string.IsNullOrWhiteSpace(fieldFilter)) return (isNotIn, values);
+
+            // NOT IN 패턴 먼저 확인
+            var notInPattern = $@"(?i){Regex.Escape(fieldName)}\s+NOT\s+IN\s*\(([^)]+)\)";
+            var notInMatch = Regex.Match(fieldFilter, notInPattern);
+            if (notInMatch.Success)
+            {
+                isNotIn = true;
+                var codeList = notInMatch.Groups[1].Value;
+                foreach (var code in codeList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    values.Add(code.Trim('\'', '"'));
+                }
+                _logger.LogInformation("SQL 필터 파싱 (NOT IN): 필드={Field}, 제외값={Values}", fieldName, string.Join(",", values));
+                return (isNotIn, values);
+            }
+
+            // IN 패턴 확인
+            var inPattern = $@"(?i){Regex.Escape(fieldName)}\s+IN\s*\(([^)]+)\)";
+            var inMatch = Regex.Match(fieldFilter, inPattern);
+            if (inMatch.Success)
+            {
+                isNotIn = false;
+                var codeList = inMatch.Groups[1].Value;
+                foreach (var code in codeList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    values.Add(code.Trim('\'', '"'));
+                }
+                _logger.LogInformation("SQL 필터 파싱 (IN): 필드={Field}, 포함값={Values}", fieldName, string.Join(",", values));
+                return (isNotIn, values);
+            }
+
+            return (isNotIn, values);
+        }
+
+        /// <summary>
+        /// 피처의 필드 값이 SQL 스타일 필터 조건을 만족하는지 검사합니다.
+        /// </summary>
+        /// <param name="fieldValue">피처의 필드 값</param>
+        /// <param name="isNotIn">NOT IN 여부</param>
+        /// <param name="filterValues">필터 값 집합</param>
+        /// <returns>검사 대상이면 true, 제외 대상이면 false</returns>
+        private bool ShouldIncludeByFilter(string? fieldValue, bool isNotIn, HashSet<string> filterValues)
+        {
+            if (filterValues.Count == 0) return true; // 필터가 없으면 모두 포함
+
+            var value = (fieldValue ?? string.Empty).Trim();
+            
+            if (isNotIn)
+            {
+                // NOT IN: 값이 목록에 없으면 포함
+                return !filterValues.Contains(value);
+            }
+            else
+            {
+                // IN: 값이 목록에 있으면 포함
+                return filterValues.Contains(value);
+            }
+        }
+
         private string NormalizeFilterExpression(string filter)
         {
             if (string.IsNullOrWhiteSpace(filter)) return filter;
@@ -1880,21 +1961,38 @@ namespace SpatialCheckPro.Processors
             var line = getLayer(config.MainTableId);
             if (line == null) return;
 
+            // SQL 스타일 필터 파싱 - 메모리 필터링용 (GDAL FileGDB 드라이버가 IN/NOT IN을 제대로 지원하지 않음)
+            var (isNotIn, filterValues) = ParseSqlStyleFilter(fieldFilter, "road_se");
+
             using var _attrFilter = ApplyAttributeFilterIfMatch(line, fieldFilter);
 
-            _logger.LogInformation("선 연결성 검사 시작 (공간 인덱스 최적화 적용): 허용오차={Tolerance}m", tolerance);
+            _logger.LogInformation("선 연결성 검사 시작: 허용오차={Tolerance}m, 필터={Filter}, 메모리필터={MemFilter}", 
+                tolerance, fieldFilter, 
+                filterValues.Count > 0 ? $"{(isNotIn ? "NOT IN" : "IN")}({string.Join(",", filterValues)})" : "없음");
             var startTime = DateTime.Now;
 
             // 1단계: 모든 선분과 끝점 정보 수집
             line.ResetReading();
             var allSegments = new List<LineSegmentInfo>();
             var endpointIndex = new Dictionary<string, List<EndpointInfo>>(); // 그리드 기반 공간 인덱스
+            var skippedCount = 0;
             
             Feature? f;
             while ((f = line.GetNextFeature()) != null)
             {
                 using (f)
                 {
+                    // 메모리 필터링: 조건을 만족하지 않으면 스킵 (대소문자 무시)
+                    if (filterValues.Count > 0)
+                    {
+                        var roadSe = GetFieldValueSafe(f, "road_se") ?? string.Empty;
+                        if (!ShouldIncludeByFilter(roadSe, isNotIn, filterValues))
+                        {
+                            skippedCount++;
+                            continue;
+                        }
+                    }
+
                     var g = f.GetGeometryRef();
                     if (g == null) continue;
                     
@@ -1925,8 +2023,8 @@ namespace SpatialCheckPro.Processors
                 }
             }
 
-            _logger.LogInformation("선분 수집 완료: {Count}개, 끝점 인덱스 그리드 수: {GridCount}", 
-                allSegments.Count, endpointIndex.Count);
+            _logger.LogInformation("선분 수집 완료: 검사대상={Count}개, 제외={Skipped}개, 끝점 인덱스 그리드 수: {GridCount}", 
+                allSegments.Count, skippedCount, endpointIndex.Count);
 
             // 2단계: 공간 인덱스를 사용하여 빠른 연결성 검사 (O(N) 또는 O(N log N))
             var total = allSegments.Count;
@@ -3592,6 +3690,9 @@ namespace SpatialCheckPro.Processors
                 return;
             }
 
+            // SQL 스타일 필터 파싱 - 메모리 필터링용 (GDAL FileGDB 드라이버가 IN/NOT IN을 제대로 지원하지 않음)
+            var (isNotIn, filterValues) = ParseSqlStyleFilter(fieldFilter, "pg_rdfc_se");
+
             using var _attrFilterRestore = ApplyAttributeFilterIfMatch(mainLayer, fieldFilter);
 
             var boundaryUnion = BuildUnionGeometryWithCache(relatedLayer, $"{config.RelatedTableId}_UNION");
@@ -3602,11 +3703,13 @@ namespace SpatialCheckPro.Processors
             mainLayer.ResetReading();
             var totalFeatures = mainLayer.GetFeatureCount(1);
             var processedCount = 0;
+            var skippedCount = 0;
             var maxIterations = totalFeatures > 0 ? Math.Max(10000, (int)(totalFeatures * 2.0)) : int.MaxValue;
             var useDynamicCounting = totalFeatures == 0;
 
-            _logger.LogInformation("경계불일치 검사 시작: {MainTable} → {RelatedTable}, 필터: {Filter}, 최대반복: {MaxIter}", 
-                config.MainTableId, config.RelatedTableId, fieldFilter, useDynamicCounting ? "동적" : maxIterations.ToString());
+            _logger.LogInformation("경계불일치 검사 시작: {MainTable} → {RelatedTable}, 필터: {Filter}, 메모리필터: {MemFilter}", 
+                config.MainTableId, config.RelatedTableId, fieldFilter, 
+                filterValues.Count > 0 ? $"{(isNotIn ? "NOT IN" : "IN")}({string.Join(",", filterValues)})" : "없음");
 
             Feature? feature;
             while ((feature = mainLayer.GetNextFeature()) != null)
@@ -3627,11 +3730,19 @@ namespace SpatialCheckPro.Processors
 
                 using (feature)
                 {
+                    var code = feature.GetFieldAsString("PG_RDFC_SE") ?? string.Empty;
+                    
+                    // 메모리 필터링: 조건을 만족하지 않으면 스킵
+                    if (!ShouldIncludeByFilter(code, isNotIn, filterValues))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
                     var geom = feature.GetGeometryRef();
                     if (geom == null || geom.IsEmpty()) continue;
 
                     var oid = feature.GetFID().ToString(CultureInfo.InvariantCulture);
-                    var code = feature.GetFieldAsString("PG_RDFC_SE") ?? string.Empty;
 
                     try
                     {
@@ -4181,12 +4292,30 @@ namespace SpatialCheckPro.Processors
             var layer = getLayer(config.MainTableId);
             if (layer == null) return;
 
+            // NOT IN 필터 파싱 - 메모리 필터링용 (GDAL FileGDB 드라이버가 NOT IN을 제대로 지원하지 않음)
+            var excludedRoadTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(fieldFilter))
+            {
+                // "road_se NOT IN ('RDS010','RDS011',...)" 형식에서 제외할 코드 추출
+                var notInMatch = Regex.Match(fieldFilter, @"(?i)road_se\s+NOT\s+IN\s*\(([^)]+)\)");
+                if (notInMatch.Success)
+                {
+                    var codeList = notInMatch.Groups[1].Value;
+                    foreach (var code in codeList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        excludedRoadTypes.Add(code.Trim('\'', '"'));
+                    }
+                    _logger.LogInformation("LineDisconnection 메모리 필터링 활성화: 제외 도로구분={Codes}", string.Join(",", excludedRoadTypes));
+                }
+            }
+
             // FieldFilter가 지정되면 그 조건에 맞는 도로중심선만 검사
             using var _attrFilter = ApplyAttributeFilterIfMatch(layer, fieldFilter);
 
             layer.ResetReading();
             var totalFeatures = layer.GetFeatureCount(1);
             var processedCount = 0;
+            var skippedCount = 0;
             var maxIterations = totalFeatures > 0 ? Math.Max(10000, (int)(totalFeatures * 2.0)) : int.MaxValue;
             var useDynamicCounting = totalFeatures == 0;
 
@@ -4209,6 +4338,17 @@ namespace SpatialCheckPro.Processors
 
                 using (feature)
                 {
+                    // 메모리 필터링: 제외 도로구분인 경우 스킵 (대소문자 무시)
+                    if (excludedRoadTypes.Count > 0)
+                    {
+                        var roadSe = GetFieldValueSafe(feature, "road_se") ?? string.Empty;
+                        if (excludedRoadTypes.Contains(roadSe.Trim()))
+                        {
+                            skippedCount++;
+                            continue;
+                        }
+                    }
+
                     var geom = feature.GetGeometryRef();
                     if (geom == null || geom.IsEmpty()) continue;
 
@@ -4216,6 +4356,9 @@ namespace SpatialCheckPro.Processors
                     ExtractLineSegments(geom, oid, allSegments, endpointIndex, gridSize);
                 }
             }
+            
+            _logger.LogInformation("LineDisconnection 피처 수집 완료: 전체={Total}, 검사대상={Filtered}, 제외={Skipped}, 제외코드={Codes}", 
+                processedCount, processedCount - skippedCount, skippedCount, string.Join(",", excludedRoadTypes));
 
             // 연결되지 않은 끝점 검사
             var disconnectedEndpoints = new HashSet<long>();
@@ -4276,89 +4419,96 @@ namespace SpatialCheckPro.Processors
                 }
             }
 
-            // 속성별로 그룹화하여 검사
-            var segmentsByAttribute = new Dictionary<string, List<(long Oid, double StartX, double StartY, double EndX, double EndY)>>();
+            _logger.LogInformation("LineDisconnectionWithAttribute 필터링: 속성필드={Field}, 제외코드={Codes}", 
+                attributeFieldName, excludedRoadTypes.Count > 0 ? string.Join(",", excludedRoadTypes) : "(없음)");
 
-            layer.ResetReading();
-            var totalFeatures = layer.GetFeatureCount(1);
-            var processedCount = 0;
-            var maxIterations = totalFeatures > 0 ? Math.Max(10000, (int)(totalFeatures * 2.0)) : int.MaxValue;
-            var useDynamicCounting = totalFeatures == 0;
+                // 속성별로 그룹화하여 검사
+                var segmentsByAttribute = new Dictionary<string, List<(long Oid, double StartX, double StartY, double EndX, double EndY)>>();
 
-            Feature? feature;
-            while ((feature = layer.GetNextFeature()) != null)
-            {
-                token.ThrowIfCancellationRequested();
-                processedCount++;
-                
-                if (processedCount > maxIterations && !useDynamicCounting)
+                layer.ResetReading();
+                var totalFeatures = layer.GetFeatureCount(1);
+                var processedCount = 0;
+            var skippedCount = 0;
+                var maxIterations = totalFeatures > 0 ? Math.Max(10000, (int)(totalFeatures * 2.0)) : int.MaxValue;
+                var useDynamicCounting = totalFeatures == 0;
+
+                Feature? feature;
+                while ((feature = layer.GetNextFeature()) != null)
                 {
-                    _logger.LogWarning("안전장치 발동: 최대 반복 횟수({MaxIter})에 도달하여 강제 종료", maxIterations);
-                    break;
-                }
-
-                using (feature)
-                {
-                    var geom = feature.GetGeometryRef();
-                    if (geom == null || geom.IsEmpty()) continue;
-
-                    var oid = feature.GetFID();
-                    var rawValue = feature.GetFieldAsString(attributeFieldName);
-                    var attrValue = string.IsNullOrWhiteSpace(rawValue) ? "UNKNOWN" : rawValue.Trim();
-
-                    if (excludedRoadTypes.Contains(attrValue))
-                    {
-                        _logger.LogDebug("제외 도로구분({Field}={Value})으로 단절 검사 생략: OID={Oid}", attributeFieldName, attrValue, oid);
-                        continue;
-                    }
+                    token.ThrowIfCancellationRequested();
+                    processedCount++;
                     
-                    if (!segmentsByAttribute.ContainsKey(attrValue))
+                    if (processedCount > maxIterations && !useDynamicCounting)
                     {
-                        segmentsByAttribute[attrValue] = new List<(long, double, double, double, double)>();
+                        _logger.LogWarning("안전장치 발동: 최대 반복 횟수({MaxIter})에 도달하여 강제 종료", maxIterations);
+                        break;
                     }
 
-                    ExtractLineEndpoints(geom, oid, segmentsByAttribute[attrValue]);
-                }
-            }
-
-            // 각 속성값별로 단절 검사
-            var totalErrors = 0;
-            foreach (var (attrValue, segments) in segmentsByAttribute)
-            {
-                var endpointIndex = new Dictionary<string, List<EndpointInfo>>();
-                double gridSize = Math.Max(tolerance, 1.0);
-
-                foreach (var (oid, sx, sy, ex, ey) in segments)
-                {
-                    AddEndpointToIndex(endpointIndex, sx, sy, oid, true, gridSize);
-                    AddEndpointToIndex(endpointIndex, ex, ey, oid, false, gridSize);
-                }
-
-                foreach (var (oid, sx, sy, ex, ey) in segments)
-                {
-                    var startCandidates = SearchEndpointsNearby(endpointIndex, sx, sy, tolerance);
-                    var endCandidates = SearchEndpointsNearby(endpointIndex, ex, ey, tolerance);
-
-                    bool startConnected = startCandidates.Any(c => c.Oid != oid && 
-                        Distance(sx, sy, c.X, c.Y) <= tolerance);
-                    bool endConnected = endCandidates.Any(c => c.Oid != oid && 
-                        Distance(ex, ey, c.X, c.Y) <= tolerance);
-
-                    if (!startConnected && !endConnected)
+                    using (feature)
                     {
-                        totalErrors++;
-                        var geom = GetGeometryByOID(layer, oid);
-                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_022",
-                            $"동일 {attributeFieldName}({attrValue})를 가진 도로경계선이 단절되었습니다",
+                        var geom = feature.GetGeometryRef();
+                        if (geom == null || geom.IsEmpty()) continue;
+
+                        var oid = feature.GetFID();
+                        var rawValue = feature.GetFieldAsString(attributeFieldName);
+                        var attrValue = string.IsNullOrWhiteSpace(rawValue) ? "UNKNOWN" : rawValue.Trim();
+
+                        if (excludedRoadTypes.Contains(attrValue))
+                        {
+                        skippedCount++;
+                            continue;
+                        }
+                        
+                        if (!segmentsByAttribute.ContainsKey(attrValue))
+                        {
+                            segmentsByAttribute[attrValue] = new List<(long, double, double, double, double)>();
+                        }
+
+                        ExtractLineEndpoints(geom, oid, segmentsByAttribute[attrValue]);
+                    }
+                }
+
+            _logger.LogInformation("LineDisconnectionWithAttribute 피처 수집 완료: 전체={Total}, 검사대상={Filtered}, 제외={Skipped}", 
+                processedCount, processedCount - skippedCount, skippedCount);
+
+                // 각 속성값별로 단절 검사
+                var totalErrors = 0;
+                foreach (var (attrValue, segments) in segmentsByAttribute)
+                {
+                    var endpointIndex = new Dictionary<string, List<EndpointInfo>>();
+                    double gridSize = Math.Max(tolerance, 1.0);
+
+                    foreach (var (oid, sx, sy, ex, ey) in segments)
+                    {
+                        AddEndpointToIndex(endpointIndex, sx, sy, oid, true, gridSize);
+                        AddEndpointToIndex(endpointIndex, ex, ey, oid, false, gridSize);
+                    }
+
+                    foreach (var (oid, sx, sy, ex, ey) in segments)
+                    {
+                        var startCandidates = SearchEndpointsNearby(endpointIndex, sx, sy, tolerance);
+                        var endCandidates = SearchEndpointsNearby(endpointIndex, ex, ey, tolerance);
+
+                        bool startConnected = startCandidates.Any(c => c.Oid != oid && 
+                            Distance(sx, sy, c.X, c.Y) <= tolerance);
+                        bool endConnected = endCandidates.Any(c => c.Oid != oid && 
+                            Distance(ex, ey, c.X, c.Y) <= tolerance);
+
+                        if (!startConnected && !endConnected)
+                        {
+                            totalErrors++;
+                            var geom = GetGeometryByOID(layer, oid);
+                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_022",
+                                $"동일 {attributeFieldName}({attrValue})를 가진 도로경계선이 단절되었습니다",
                             config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"{fieldFilter}={attrValue}", geom, config.MainTableName);
-                        geom?.Dispose();
+                            geom?.Dispose();
+                        }
                     }
                 }
-            }
 
-            _logger.LogInformation("도로경계선 단절 검사 완료: 처리 {ProcessedCount}개, 오류 {ErrorCount}개", processedCount, totalErrors);
-            RaiseProgress(config.RuleId ?? string.Empty, config.CaseType ?? string.Empty, processedCount, processedCount, completed: true);
-        }
+                _logger.LogInformation("도로경계선 단절 검사 완료: 처리 {ProcessedCount}개, 오류 {ErrorCount}개", processedCount, totalErrors);
+                RaiseProgress(config.RuleId ?? string.Empty, config.CaseType ?? string.Empty, processedCount, processedCount, completed: true);
+            }
 
         private void EvaluatePolygonBoundaryMatch(DataSource ds, Func<string, Layer?> getLayer, ValidationResult result, string fieldFilter, double tolerance, CancellationToken token, RelationCheckConfig config)
         {
@@ -4586,7 +4736,24 @@ namespace SpatialCheckPro.Processors
             var boundaryLayer = getLayer(config.RelatedTableId); // 경계면
             if (centerlineLayer == null || boundaryLayer == null) return;
 
-        using var _attrFilter = ApplyAttributeFilterIfMatch(centerlineLayer, fieldFilter);
+            // NOT IN 필터 파싱 - 메모리 필터링용
+            var excludedRoadTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(fieldFilter))
+            {
+                // "road_se NOT IN ('RDS010','RDS011',...)" 형식에서 제외할 코드 추출
+                var notInMatch = Regex.Match(fieldFilter, @"(?i)road_se\s+NOT\s+IN\s*\(([^)]+)\)");
+                if (notInMatch.Success)
+                {
+                    var codeList = notInMatch.Groups[1].Value;
+                    foreach (var code in codeList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        excludedRoadTypes.Add(code.Trim('\'', '"'));
+                    }
+                    _logger.LogInformation("DefectiveConnection 메모리 필터링 활성화: 제외 도로구분={Codes}", string.Join(",", excludedRoadTypes));
+                }
+            }
+
+            using var _attrFilter = ApplyAttributeFilterIfMatch(centerlineLayer, fieldFilter);
 
             var boundaryUnion = BuildUnionGeometryWithCache(boundaryLayer, $"{config.RelatedTableId}_UNION");
             if (boundaryUnion == null) return;
@@ -4596,11 +4763,13 @@ namespace SpatialCheckPro.Processors
             // 끝점 인덱스 구축
             var endpointIndex = new Dictionary<string, List<EndpointInfo>>();
             var allSegments = new List<LineSegmentInfo>();
+            var segmentRoadTypes = new Dictionary<long, string>(); // OID -> road_se 매핑
             double gridSize = Math.Max(tolerance, 1.0);
 
             centerlineLayer.ResetReading();
             var totalFeatures = centerlineLayer.GetFeatureCount(1);
             var processedCount = 0;
+            var skippedCount = 0;
             var maxIterations = totalFeatures > 0 ? Math.Max(10000, (int)(totalFeatures * 2.0)) : int.MaxValue;
             var useDynamicCounting = totalFeatures == 0;
 
@@ -4618,6 +4787,19 @@ namespace SpatialCheckPro.Processors
 
                 using (feature)
                 {
+                    // 메모리 필터링: 제외 도로구분인 경우 스킵
+                    // 메모리 필터링: 제외 도로구분인 경우 스킵 (대소문자 무시)
+                    if (excludedRoadTypes.Count > 0)
+                    {
+                        var roadSe = GetFieldValueSafe(feature, "road_se") ?? string.Empty;
+                        if (excludedRoadTypes.Contains(roadSe.Trim()))
+                        {
+                            skippedCount++;
+                            continue;
+                        }
+                        segmentRoadTypes[feature.GetFID()] = roadSe;
+                    }
+
                     var geom = feature.GetGeometryRef();
                     if (geom == null || geom.IsEmpty()) continue;
 
@@ -4625,6 +4807,9 @@ namespace SpatialCheckPro.Processors
                     ExtractLineSegments(geom, oid, allSegments, endpointIndex, gridSize);
                 }
             }
+            
+            _logger.LogInformation("DefectiveConnection 피처 수집 완료: 전체={Total}, 필터링 후={Filtered}, 제외={Skipped}", 
+                processedCount, allSegments.Count, skippedCount);
 
             // 결함 검사
             foreach (var segment in allSegments)
@@ -5742,5 +5927,5 @@ namespace SpatialCheckPro.Processors
             
             _logger.LogDebug("RelationCheckProcessor 캐시 정리 완료");
         }
-    }
-}
+            }
+        }

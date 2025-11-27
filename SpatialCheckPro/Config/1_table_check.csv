@@ -25,7 +25,7 @@ tn_lnpgr,선형지형,LINESTRING,EPSG:5179
 tn_lnrfc,선형도로시설,LINESTRING,EPSG:5179
 tn_lnsfc,선형구조시설,LINESTRING,EPSG:5179
 tn_lnwtcors_fclty,선형수로시설,LINESTRING,EPSG:5179
-tn_mapindx_5k,도엽인덱스5K,POLYGON,EPSG:5179
+#tn_mapindx_5k,도엽인덱스5K,POLYGON,EPSG:5179
 tn_ptafc,점형공항시설,POINT,EPSG:5179
 tn_pthfc,점형항만시설,POINT,EPSG:5179
 tn_ptpgr,점형지형,POINT,EPSG:5179
