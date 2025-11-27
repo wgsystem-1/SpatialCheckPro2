@@ -118,9 +118,9 @@ namespace SpatialCheckPro.Processors.RelationChecks
             foreach (var bldOid in buildingsWithoutPoints)
             {
                 var geometry = GetGeometryByOID(buld, bldOid);
-                AddError(result, "REL_BULD_CTPT_MISSING", 
+                AddError(result, config.RuleId ?? "LOG_TOP_REL_014", 
                     "건물 내 건물중심점이 없습니다", 
-                    config.MainTableId, bldOid.ToString(CultureInfo.InvariantCulture), geometry);
+                    config.MainTableId, bldOid.ToString(CultureInfo.InvariantCulture), geometry, config.MainTableName);
                 geometry?.Dispose();
             }
             
@@ -128,9 +128,9 @@ namespace SpatialCheckPro.Processors.RelationChecks
             foreach (var ptOid in pointsOutsideBuildings)
             {
                 var geometry = GetGeometryByOID(ctpt, ptOid);
-                AddError(result, "REL_CTPT_OUTSIDE_BULD", 
+                AddError(result, config.RuleId ?? "LOG_TOP_REL_014", 
                     "건물 외부에 건물중심점이 존재합니다", 
-                    config.RelatedTableId, ptOid.ToString(CultureInfo.InvariantCulture), geometry);
+                    config.RelatedTableId, ptOid.ToString(CultureInfo.InvariantCulture), geometry, config.RelatedTableName);
                 geometry?.Dispose();
             }
             

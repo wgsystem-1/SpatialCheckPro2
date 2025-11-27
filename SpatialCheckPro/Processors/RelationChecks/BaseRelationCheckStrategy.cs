@@ -75,7 +75,7 @@ namespace SpatialCheckPro.Processors.RelationChecks
             onProgress?.Invoke(eventArgs);
         }
 
-        protected void AddError(ValidationResult result, string errType, string message, string table = "", string objectId = "", Geometry? geometry = null)
+        protected void AddError(ValidationResult result, string errType, string message, string table = "", string objectId = "", Geometry? geometry = null, string tableDisplayName = "")
         {
             result.IsValid = false;
             result.ErrorCount += 1;
@@ -85,9 +85,10 @@ namespace SpatialCheckPro.Processors.RelationChecks
             {
                 ErrorCode = errType,
                 Message = message,
-                TableName = table,
+                TableId = string.IsNullOrWhiteSpace(table) ? null : table,
+                TableName = !string.IsNullOrWhiteSpace(tableDisplayName) ? tableDisplayName : string.Empty,
                 FeatureId = objectId,
-                SourceTable = table,
+                SourceTable = string.IsNullOrWhiteSpace(table) ? null : table,
                 SourceObjectId = long.TryParse(objectId, NumberStyles.Any, CultureInfo.InvariantCulture, out var oid) ? oid : null,
                 Severity = Models.Enums.ErrorSeverity.Error,
                 X = x,
@@ -96,7 +97,7 @@ namespace SpatialCheckPro.Processors.RelationChecks
             });
         }
 
-        protected void AddDetailedError(ValidationResult result, string errType, string message, string table = "", string objectId = "", string additionalInfo = "", Geometry? geometry = null)
+        protected void AddDetailedError(ValidationResult result, string errType, string message, string table = "", string objectId = "", string additionalInfo = "", Geometry? geometry = null, string tableDisplayName = "")
         {
             result.IsValid = false;
             result.ErrorCount += 1;
@@ -108,9 +109,10 @@ namespace SpatialCheckPro.Processors.RelationChecks
             {
                 ErrorCode = errType,
                 Message = fullMessage,
-                TableName = table,
+                TableId = string.IsNullOrWhiteSpace(table) ? null : table,
+                TableName = !string.IsNullOrWhiteSpace(tableDisplayName) ? tableDisplayName : string.Empty,
                 FeatureId = objectId,
-                SourceTable = table,
+                SourceTable = string.IsNullOrWhiteSpace(table) ? null : table,
                 SourceObjectId = long.TryParse(objectId, NumberStyles.Any, CultureInfo.InvariantCulture, out var oid) ? oid : null,
                 Severity = Models.Enums.ErrorSeverity.Error,
                 X = x,

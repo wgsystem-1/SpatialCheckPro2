@@ -9,6 +9,7 @@ using OSGeo.OGR;
 using SpatialCheckPro.Models;
 using SpatialCheckPro.Models.Config;
 using SpatialCheckPro.Models.Enums;
+using SpatialCheckPro.Utils;
 
 namespace SpatialCheckPro.Services
 {
@@ -498,8 +499,8 @@ namespace SpatialCheckPro.Services
             string message,
             Geometry lineGeometry)
         {
-            var envelope = new OSGeo.OGR.Envelope();
-            lineGeometry.GetEnvelope(envelope);
+            // Envelope 중심 대신 실제 선의 중간점 사용
+            var (midX, midY) = GeometryCoordinateExtractor.GetLineStringMidpoint(lineGeometry);
 
             return new SpatialRelationError
             {
@@ -510,8 +511,8 @@ namespace SpatialCheckPro.Services
                 RelationType = rule.RelationType,
                 ErrorType = "LINE_POLYGON_INTERSECTION_VIOLATION",
                 Severity = rule.ViolationSeverity,
-                ErrorLocationX = (envelope.MinX + envelope.MaxX) / 2,
-                ErrorLocationY = (envelope.MinY + envelope.MaxY) / 2,
+                ErrorLocationX = midX,
+                ErrorLocationY = midY,
                 GeometryWKT = ExportGeometryToWkt(lineGeometry),
                 Message = message,
                 Properties = new Dictionary<string, object>

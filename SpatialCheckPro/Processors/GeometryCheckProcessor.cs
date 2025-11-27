@@ -197,7 +197,7 @@ namespace SpatialCheckPro.Processors
                     if (config.ShouldCheckDuplicate)
                     {
                         var duplicateErrors = await _highPerfValidator.CheckDuplicatesHighPerformanceAsync(layer);
-                        var validationErrors = ConvertToValidationErrors(duplicateErrors, config.TableId, "GEOM_DUPLICATE");
+                        var validationErrors = ConvertToValidationErrors(duplicateErrors, config.TableId, "LOG_TOP_GEO_001");
 
                         if (errorWriter != null)
                         {
@@ -214,7 +214,7 @@ namespace SpatialCheckPro.Processors
                     {
                         var overlapErrors = await _highPerfValidator.CheckOverlapsHighPerformanceAsync(
                             layer, _criteria.OverlapTolerance);
-                        var validationErrors = ConvertToValidationErrors(overlapErrors, config.TableId, "GEOM_OVERLAP");
+                        var validationErrors = ConvertToValidationErrors(overlapErrors, config.TableId, "LOG_TOP_GEO_002");
 
                         if (errorWriter != null)
                         {
@@ -459,9 +459,10 @@ namespace SpatialCheckPro.Processors
 
                                     _AddErrorToResult(new ValidationError
                                     {
-                                        ErrorCode = "GEOM_INVALID",
+                                        ErrorCode = "LOG_TOP_GEO_003",
                                         Message = validationError != null ? $"{errorTypeName}: {validationError.Message}" : "지오메트리 유효성 오류",
-                                        TableName = config.TableId,
+                                        TableId = config.TableId,
+                                        TableName = ResolveTableName(config.TableId, config.TableName),
                                         FeatureId = fid.ToString(),
                                         Severity = Models.Enums.ErrorSeverity.Error,
                                         X = errorX,
@@ -491,19 +492,44 @@ namespace SpatialCheckPro.Processors
                                 
                                 if (!isGdalSimple)
                                 {
-                                    // 간단한 오류만 기록 (NTS 상세 분석 생략)
-                                    var (centerX, centerY) = GeometryCoordinateExtractor.GetEnvelopeCenter(geometryRef);
+                                    // 상세 분석을 위해 NTS 사용
+                                    geometryRef.ExportToWkt(out string wkt);
+                                    var reader = new WKTReader();
+                                    var ntsGeom = reader.Read(wkt);
+                                    
+                                    double errorX = 0, errorY = 0;
+                                    try 
+                                    {
+                                        var simpleOp = new IsSimpleOp(ntsGeom);
+                                        // IsSimpleOp.NonSimpleLocation은 첫 번째 비단순 지점(교차점)을 반환함
+                                        var nonSimpleLoc = simpleOp.NonSimpleLocation;
+                                        if (nonSimpleLoc != null)
+                                        {
+                                            errorX = nonSimpleLoc.X;
+                                            errorY = nonSimpleLoc.Y;
+                                        }
+                                        else
+                                        {
+                                            // 교차점을 못 찾으면 첫 번째 정점
+                                            (errorX, errorY) = GeometryCoordinateExtractor.GetFirstVertex(geometryRef);
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        (errorX, errorY) = GeometryCoordinateExtractor.GetFirstVertex(geometryRef);
+                                    }
                                     
                                     _AddErrorToResult(new ValidationError
                                     {
-                                        ErrorCode = "GEOM_NOT_SIMPLE",
+                                        ErrorCode = "LOG_TOP_GEO_003",
                                         Message = "자기 교차 오류 (Self-intersection)",
-                                        TableName = config.TableId,
+                                        TableId = config.TableId,
+                                        TableName = ResolveTableName(config.TableId, config.TableName),
                                         FeatureId = fid.ToString(),
                                         Severity = Models.Enums.ErrorSeverity.Error,
-                                        X = centerX,
-                                        Y = centerY,
-                                        GeometryWKT = QcError.CreatePointWKT(centerX, centerY)
+                                        X = errorX,
+                                        Y = errorY,
+                                        GeometryWKT = QcError.CreatePointWKT(errorX, errorY)
                                     });
                                 }
                             }
@@ -548,22 +574,17 @@ namespace SpatialCheckPro.Processors
                                         var length = workingGeometry.Length();
                                         if (length < _criteria.MinLineLength && length > 0)
                                         {
-                                            int pointCount = workingGeometry.GetPointCount();
-                                            double midX = 0, midY = 0;
-                                            if (pointCount > 0)
-                                            {
-                                                int midIndex = pointCount / 2;
-                                                midX = workingGeometry.GetX(midIndex);
-                                                midY = workingGeometry.GetY(midIndex);
-                                            }
+                                            // Rule: 일반 오류는 첫 번째 정점
+                                            var (midX, midY) = GeometryCoordinateExtractor.GetFirstVertex(workingGeometry);
 
                                             workingGeometry.ExportToWkt(out string wkt);
 
                                             _AddErrorToResult(new ValidationError
                                             {
-                                                ErrorCode = "GEOM_SHORT_LINE",
+                                                ErrorCode = "LOG_TOP_GEO_005",
                                                 Message = $"선이 너무 짧습니다: {length:F3}m (최소: {_criteria.MinLineLength}m)",
-                                                TableName = config.TableId,
+                                                TableId = config.TableId,
+                                                TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
                                                 Metadata =
@@ -582,18 +603,17 @@ namespace SpatialCheckPro.Processors
                                         var area = workingGeometry.GetArea();
                                         if (area > 0 && area < _criteria.MinPolygonArea)
                                         {
-                                            var envelope = new Envelope();
-                                            workingGeometry.GetEnvelope(envelope);
-                                            double centerX = (envelope.MinX + envelope.MaxX) / 2.0;
-                                            double centerY = (envelope.MinY + envelope.MaxY) / 2.0;
+                                            // Rule: 일반 오류는 첫 번째 정점
+                                            var (centerX, centerY) = GeometryCoordinateExtractor.GetFirstVertex(workingGeometry);
 
                                             workingGeometry.ExportToWkt(out string wkt);
 
                                             _AddErrorToResult(new ValidationError
                                             {
-                                                ErrorCode = "GEOM_SMALL_AREA",
+                                                ErrorCode = "LOG_TOP_GEO_006",
                                                 Message = $"면적이 너무 작습니다: {area:F2}㎡ (최소: {_criteria.MinPolygonArea}㎡)",
-                                                TableName = config.TableId,
+                                                TableId = config.TableId,
+                                                TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
                                                 Metadata =
@@ -616,27 +636,17 @@ namespace SpatialCheckPro.Processors
                                                 ? string.Empty
                                                 : $" ({minVertexCheck.Detail})";
 
-                                            double x = 0, y = 0;
-                                            if (workingGeometry.GetPointCount() > 0)
-                                            {
-                                                x = workingGeometry.GetX(0);
-                                                y = workingGeometry.GetY(0);
-                                            }
-                                            else
-                                            {
-                                                var env = new Envelope();
-                                                workingGeometry.GetEnvelope(env);
-                                                x = (env.MinX + env.MaxX) / 2.0;
-                                                y = (env.MinY + env.MaxY) / 2.0;
-                                            }
+                                            // Rule: 일반 오류는 첫 번째 정점
+                                            var (x, y) = GeometryCoordinateExtractor.GetFirstVertex(workingGeometry);
 
                                             workingGeometry.ExportToWkt(out string wkt);
 
                                             _AddErrorToResult(new ValidationError
                                             {
-                                                ErrorCode = "GEOM_MIN_VERTEX",
+                                                ErrorCode = "LOG_TOP_GEO_008",
                                                 Message = $"정점 수가 부족합니다: {minVertexCheck.ObservedVertices}개 (최소: {minVertexCheck.RequiredVertices}개){detail}",
-                                                TableName = config.TableId,
+                                                TableId = config.TableId,
+                                                TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
                                                 Metadata =
@@ -659,32 +669,17 @@ namespace SpatialCheckPro.Processors
                                     {
                                         if (IsSliverPolygon(workingGeometry, out string sliverMessage))
                                         {
-                                            double centerX = 0, centerY = 0;
-                                            if (geometryRef.GetGeometryCount() > 0)
-                                            {
-                                                var exteriorRing = geometryRef.GetGeometryRef(0);
-                                                if (exteriorRing != null && exteriorRing.GetPointCount() > 0)
-                                                {
-                                                    int pointCount = exteriorRing.GetPointCount();
-                                                    int midIndex = pointCount / 2;
-                                                    centerX = exteriorRing.GetX(midIndex);
-                                                    centerY = exteriorRing.GetY(midIndex);
-                                                }
-                                            }
-                                            if (centerX == 0 && centerY == 0)
-                                            {
-                                                var env = new Envelope();
-                                                geometryRef.GetEnvelope(env);
-                                                centerX = (env.MinX + env.MaxX) / 2.0;
-                                                centerY = (env.MinY + env.MaxY) / 2.0;
-                                            }
+                                            // Rule: 일반 오류는 첫 번째 정점
+                                            var (centerX, centerY) = GeometryCoordinateExtractor.GetFirstVertex(workingGeometry);
+
                                             geometryRef.ExportToWkt(out string wkt);
 
                                             _AddErrorToResult(new ValidationError
                                             {
-                                                ErrorCode = "GEOM_SLIVER",
+                                                ErrorCode = "LOG_TOP_GEO_004",
                                                 Message = sliverMessage,
-                                                TableName = config.TableId,
+                                                TableId = config.TableId,
+                                                TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
                                                 Metadata =
@@ -714,9 +709,10 @@ namespace SpatialCheckPro.Processors
                                             workingGeometry.ExportToWkt(out string wkt);
                                             _AddErrorToResult(new ValidationError
                                             {
-                                                ErrorCode = "GEOM_SPIKE",
+                                                ErrorCode = "LOG_TOP_GEO_009",
                                                 Message = spikeMessage,
-                                                TableName = config.TableId,
+                                                TableId = config.TableId,
+                                                TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
                                                 X = spikeX,
@@ -956,9 +952,10 @@ namespace SpatialCheckPro.Processors
 
                             errors.Add(new ValidationError
                             {
-                                ErrorCode = "GEOM_INVALID",
+                                ErrorCode = "LOG_TOP_GEO_003",
                                 Message = validationError != null ? $"{errorTypeName}: {validationError.Message}" : "지오메트리 유효성 오류 (자체꼬임, 자기중첩, 홀폴리곤, 링방향 등)",
-                                TableName = config.TableId,
+                                TableId = config.TableId,
+                                TableName = ResolveTableName(config.TableId, config.TableName),
                                 FeatureId = fid.ToString(),
                                 Severity = Models.Enums.ErrorSeverity.Error,
                                 X = errorX,
@@ -999,9 +996,10 @@ namespace SpatialCheckPro.Processors
 
                                 errors.Add(new ValidationError
                                 {
-                                    ErrorCode = "GEOM_NOT_SIMPLE",
+                                    ErrorCode = "LOG_TOP_GEO_003",
                                     Message = "자기 교차 오류 (Self-intersection)",
-                                    TableName = config.TableId,
+                                    TableId = config.TableId,
+                                    TableName = ResolveTableName(config.TableId, config.TableName),
                                     FeatureId = fid.ToString(),
                                     Severity = Models.Enums.ErrorSeverity.Error,
                                     X = errorX,
@@ -1020,9 +1018,10 @@ namespace SpatialCheckPro.Processors
                                 var (centerX, centerY) = GeometryCoordinateExtractor.GetEnvelopeCenter(geometry);
                                 errors.Add(new ValidationError
                                 {
-                                    ErrorCode = "GEOM_NOT_SIMPLE",
+                                    ErrorCode = "LOG_TOP_GEO_003",
                                     Message = "자기 교차 오류 (Self-intersection)",
-                                    TableName = config.TableId,
+                                    TableId = config.TableId,
+                                    TableName = ResolveTableName(config.TableId, config.TableName),
                                     FeatureId = fid.ToString(),
                                     Severity = Models.Enums.ErrorSeverity.Error,
                                     X = centerX,
@@ -1115,9 +1114,10 @@ namespace SpatialCheckPro.Processors
 
                                         errors.Add(new ValidationError
                                         {
-                                            ErrorCode = "GEOM_SHORT_LINE",
+                                            ErrorCode = "LOG_TOP_GEO_005",
                                             Message = $"선이 너무 짧습니다: {length:F3}m (최소: {_criteria.MinLineLength}m)",
-                                            TableName = config.TableId,
+                                            TableId = config.TableId,
+                                            TableName = ResolveTableName(config.TableId, config.TableName),
                                             FeatureId = fid.ToString(),
                                             Severity = Models.Enums.ErrorSeverity.Error, // 변경: 경고 제거, 모두 오류로 처리
                                             Metadata =
@@ -1144,9 +1144,10 @@ namespace SpatialCheckPro.Processors
 
                                         errors.Add(new ValidationError
                                         {
-                                            ErrorCode = "GEOM_SMALL_AREA",
+                                            ErrorCode = "LOG_TOP_GEO_006",
                                             Message = $"면적이 너무 작습니다: {area:F2}㎡ (최소: {_criteria.MinPolygonArea}㎡)",
-                                            TableName = config.TableId,
+                                            TableId = config.TableId,
+                                            TableName = ResolveTableName(config.TableId, config.TableName),
                                             FeatureId = fid.ToString(),
                                             Severity = Models.Enums.ErrorSeverity.Warning,
                                             Metadata =
@@ -1186,9 +1187,10 @@ namespace SpatialCheckPro.Processors
 
                                         errors.Add(new ValidationError
                                         {
-                                            ErrorCode = "GEOM_MIN_VERTEX",
+                                            ErrorCode = "LOG_TOP_GEO_008",
                                             Message = $"정점 수가 부족합니다: {minVertexCheck.ObservedVertices}개 (최소: {minVertexCheck.RequiredVertices}개){detail}",
-                                            TableName = config.TableId,
+                                            TableId = config.TableId,
+                                            TableName = ResolveTableName(config.TableId, config.TableName),
                                             FeatureId = fid.ToString(),
                                             Severity = Models.Enums.ErrorSeverity.Error,
                                             Metadata =
@@ -1281,9 +1283,10 @@ namespace SpatialCheckPro.Processors
 
                                 errors.Add(new ValidationError
                                 {
-                                    ErrorCode = "GEOM_SLIVER",
+                                    ErrorCode = "LOG_TOP_GEO_004",
                                     Message = sliverMessage,
-                                    TableName = config.TableId,
+                                    TableId = config.TableId,
+                                    TableName = ResolveTableName(config.TableId, config.TableName),
                                     FeatureId = fid.ToString(),
                                     Severity = Models.Enums.ErrorSeverity.Error,
                                     X = centerX,
@@ -1307,9 +1310,10 @@ namespace SpatialCheckPro.Processors
                             geometry.ExportToWkt(out string wkt);
                             errors.Add(new ValidationError
                             {
-                                ErrorCode = "GEOM_SPIKE",
+                                ErrorCode = "LOG_TOP_GEO_009",
                                 Message = spikeMessage,
-                                TableName = config.TableId,
+                                TableId = config.TableId,
+                                TableName = ResolveTableName(config.TableId, config.TableName),
                                 FeatureId = fid.ToString(),
                                 Severity = Models.Enums.ErrorSeverity.Error,
                                 X = spikeX,
@@ -2047,7 +2051,7 @@ namespace SpatialCheckPro.Processors
                                                  closestPointOnTarget.Distance(targetEnd) < 0.001;
                                 
                                 var errorType = isEndpoint ? "오버슛" : "언더슛";
-                                var errorCode = isEndpoint ? "GEOM_OVERSHOOT" : "GEOM_UNDERSHOOT";
+                                var errorCode = isEndpoint ? "LOG_TOP_GEO_012" : "LOG_TOP_GEO_011";
                                 
                                 if (isEndpoint)
                                     overshootCount++;
@@ -2063,7 +2067,8 @@ namespace SpatialCheckPro.Processors
                                 {
                                     ErrorCode = errorCode,
                                     Message = $"{errorType}: {pointName}이 다른 선과 연결되지 않음 (이격거리: {minDistance:F3}m, 대상 FID: {closestFid})",
-                                    TableName = config.TableId,
+                                    TableId = config.TableId,
+                                    TableName = ResolveTableName(config.TableId, config.TableName),
                                     FeatureId = fid.ToString(),
                                     Severity = Models.Enums.ErrorSeverity.Error,
                                     X = point.X,
@@ -2127,6 +2132,9 @@ namespace SpatialCheckPro.Processors
                 return 0.0;
             }
         }
+
+        private static string ResolveTableName(string tableId, string? tableName) =>
+            string.IsNullOrWhiteSpace(tableName) ? tableId : tableName;
     }
 }
 

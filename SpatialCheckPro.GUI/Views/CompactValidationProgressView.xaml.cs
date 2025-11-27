@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -24,6 +28,9 @@ namespace SpatialCheckPro.GUI.Views
         private int _currentStageNumber = -1; // 현재 단계 번호
         private bool _isDetailExpanded = true;
         private int _totalErrorCount = 0;
+        private readonly ObservableCollection<FileProgressItem> _batchItems = new();
+        private readonly Dictionary<int, FileProgressItem> _batchItemIndexMap = new();
+        private int _totalBatchFiles = 0;
 
         public CompactValidationProgressView()
         {
@@ -34,6 +41,7 @@ namespace SpatialCheckPro.GUI.Views
             _startTime = DateTime.Now; // 시작 시간 초기화 (UpdateUnits에서 사용)
             InitializeStageCards();
             ResetHeader();
+            BatchTimeline.ItemsSource = _batchItems;
 
             // CompletedStageCount 변경 시 자동으로 UI 업데이트
             _stageSummaries.PropertyChanged += OnStageSummariesPropertyChanged;
@@ -107,6 +115,16 @@ namespace SpatialCheckPro.GUI.Views
             CompletedStagesText.Text = $"0 / {_stageSummaries.Stages.Count}";
             TotalErrorsText.Text = "0";
             _remainingTimeViewModel?.Reset();
+            CurrentFileText.Text = string.Empty;
+            CurrentFileText.Visibility = Visibility.Collapsed;
+            CurrentFilePathText.Text = string.Empty;
+            CurrentFilePathText.Visibility = Visibility.Collapsed;
+            CurrentFileBadge.Visibility = Visibility.Collapsed;
+            CurrentFileBadgeText.Text = string.Empty;
+            _batchItems.Clear();
+            _batchItemIndexMap.Clear();
+            _totalBatchFiles = 0;
+            BatchTimelineContainer.Visibility = Visibility.Collapsed;
         }
 
         /// <summary>
@@ -354,18 +372,96 @@ namespace SpatialCheckPro.GUI.Views
         }
 
         /// <summary>
-        /// 현재 검수 중인 파일 정보를 업데이트합니다 (배치 검수 시 사용)
+        /// 배치 파일 목록을 초기화합니다
         /// </summary>
-        public void UpdateCurrentFile(int currentIndex, int totalFiles, string fileName)
+        public void InitializeBatchFiles(IList<string> filePaths)
         {
-            if (totalFiles > 1)
+            _batchItems.Clear();
+            _batchItemIndexMap.Clear();
+            _totalBatchFiles = filePaths?.Count ?? 0;
+
+            if (_totalBatchFiles > 1)
             {
-                CurrentFileText.Text = $"[{currentIndex}/{totalFiles}] {fileName}";
-                CurrentFileText.Visibility = Visibility.Visible;
+                for (int i = 0; i < _totalBatchFiles; i++)
+                {
+                    var path = filePaths[i];
+                    var item = new FileProgressItem(i + 1, Path.GetFileName(path), path);
+                    _batchItems.Add(item);
+                    _batchItemIndexMap[item.Index] = item;
+                }
+                BatchTimelineContainer.Visibility = Visibility.Visible;
+                CurrentFileBadge.Visibility = Visibility.Visible;
+                CurrentFileBadgeText.Text = $"총 {_totalBatchFiles}개";
             }
             else
             {
-                CurrentFileText.Visibility = Visibility.Collapsed;
+                BatchTimelineContainer.Visibility = Visibility.Collapsed;
+                CurrentFileBadge.Visibility = Visibility.Collapsed;
+                CurrentFileBadgeText.Text = string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 현재 검수 중인 파일 정보를 업데이트합니다 (싱글/배치 공통)
+        /// </summary>
+        public void UpdateCurrentFile(int currentIndex, int totalFiles, string fileName, string? fullPath = null)
+        {
+            _totalBatchFiles = totalFiles;
+            if (totalFiles > 1)
+            {
+                CurrentFileText.Text = $"[{currentIndex}/{totalFiles}] {fileName}";
+                CurrentFileBadge.Visibility = Visibility.Visible;
+                CurrentFileBadgeText.Text = $"{currentIndex}/{totalFiles}";
+            }
+            else
+            {
+                CurrentFileText.Text = fileName;
+                CurrentFileBadge.Visibility = Visibility.Collapsed;
+                CurrentFileBadgeText.Text = string.Empty;
+            }
+
+            CurrentFileText.Visibility = !string.IsNullOrWhiteSpace(CurrentFileText.Text)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            if (!string.IsNullOrWhiteSpace(fullPath))
+            {
+                CurrentFilePathText.Text = fullPath;
+                CurrentFilePathText.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                CurrentFilePathText.Visibility = Visibility.Collapsed;
+            }
+
+            if (totalFiles > 1 && _batchItemIndexMap.TryGetValue(currentIndex, out var item))
+            {
+                foreach (var entry in _batchItems)
+                {
+                    entry.IsActive = entry.Index == currentIndex;
+                    if (entry.Index != currentIndex && entry.State == FileProgressState.Running)
+                    {
+                        entry.SetStatus(FileProgressState.Completed, entry.ErrorCount, entry.WarningCount);
+                    }
+                }
+
+                if (item.State == FileProgressState.Pending)
+                {
+                    item.SetStatus(FileProgressState.Running, item.ErrorCount, item.WarningCount);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 파일 검수가 완료되었음을 표시합니다
+        /// </summary>
+        public void MarkFileCompleted(int index, bool isSuccess, int errorCount, int warningCount)
+        {
+            if (_batchItemIndexMap.TryGetValue(index, out var item))
+            {
+                var state = isSuccess ? FileProgressState.Completed : FileProgressState.Failed;
+                item.SetStatus(state, errorCount, warningCount);
+                item.IsActive = false;
             }
         }
 
@@ -577,6 +673,152 @@ namespace SpatialCheckPro.GUI.Views
         {
             public string StageName { get; set; } = string.Empty;
             public int ErrorCount { get; set; }
+        }
+
+        private enum FileProgressState
+        {
+            Pending,
+            Running,
+            Completed,
+            Failed
+        }
+
+        private sealed class FileProgressItem : INotifyPropertyChanged
+        {
+            private static readonly SolidColorBrush PendingBrush = new(Color.FromRgb(107, 114, 128));
+            private static readonly SolidColorBrush RunningBrush = new(Color.FromRgb(37, 99, 235));
+            private static readonly SolidColorBrush CompletedBrush = new(Color.FromRgb(16, 185, 129));
+            private static readonly SolidColorBrush FailedBrush = new(Color.FromRgb(239, 68, 68));
+            private static readonly SolidColorBrush ActiveBackground = new(Color.FromArgb((byte)64, (byte)219, (byte)234, (byte)254));
+            private static readonly SolidColorBrush InactiveBackground = Brushes.Transparent;
+
+            public int Index { get; }
+            public string FileName { get; }
+            public string FilePath { get; }
+
+            private FileProgressState _state;
+            private bool _isActive;
+            private int _errorCount;
+            private int _warningCount;
+
+            public FileProgressItem(int index, string fileName, string filePath)
+            {
+                Index = index;
+                FileName = fileName;
+                FilePath = filePath;
+                _state = FileProgressState.Pending;
+            }
+
+            public FileProgressState State
+            {
+                get => _state;
+                private set
+                {
+                    if (_state != value)
+                    {
+                        _state = value;
+                        OnPropertyChanged(nameof(State));
+                        OnPropertyChanged(nameof(StatusText));
+                        OnPropertyChanged(nameof(StatusBrush));
+                    }
+                }
+            }
+
+            public bool IsActive
+            {
+                get => _isActive;
+                set
+                {
+                    if (_isActive != value)
+                    {
+                        _isActive = value;
+                        OnPropertyChanged(nameof(IsActive));
+                        OnPropertyChanged(nameof(BackgroundBrush));
+                    }
+                }
+            }
+
+            public int ErrorCount
+            {
+                get => _errorCount;
+                private set
+                {
+                    if (_errorCount != value)
+                    {
+                        _errorCount = value;
+                        OnPropertyChanged(nameof(ErrorCount));
+                        OnPropertyChanged(nameof(Summary));
+                    }
+                }
+            }
+
+            public int WarningCount
+            {
+                get => _warningCount;
+                private set
+                {
+                    if (_warningCount != value)
+                    {
+                        _warningCount = value;
+                        OnPropertyChanged(nameof(WarningCount));
+                        OnPropertyChanged(nameof(Summary));
+                    }
+                }
+            }
+
+            public string StatusText => State switch
+            {
+                FileProgressState.Pending => "대기",
+                FileProgressState.Running => "진행 중",
+                FileProgressState.Completed => "완료",
+                FileProgressState.Failed => "오류",
+                _ => string.Empty
+            };
+
+            public Brush StatusBrush => State switch
+            {
+                FileProgressState.Completed => CompletedBrush,
+                FileProgressState.Failed => FailedBrush,
+                FileProgressState.Running => RunningBrush,
+                _ => PendingBrush
+            };
+
+            public Brush BackgroundBrush => IsActive ? ActiveBackground : InactiveBackground;
+
+            public string Summary
+            {
+                get
+                {
+                    if (State == FileProgressState.Pending)
+                    {
+                        return "대기 중";
+                    }
+
+                    if (State == FileProgressState.Running)
+                    {
+                        return "검수 진행 중";
+                    }
+
+                    var totalIssues = ErrorCount + WarningCount;
+                    return totalIssues > 0
+                        ? $"오류 {ErrorCount} · 경고 {WarningCount}"
+                        : "오류 없음";
+                }
+            }
+
+            public void SetStatus(FileProgressState state, int errors, int warnings)
+            {
+                State = state;
+                ErrorCount = errors;
+                WarningCount = warnings;
+            }
+
+            public event PropertyChangedEventHandler? PropertyChanged;
+
+            private void OnPropertyChanged(string propertyName)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
         }
 
         private void UpdateRemainingTime()

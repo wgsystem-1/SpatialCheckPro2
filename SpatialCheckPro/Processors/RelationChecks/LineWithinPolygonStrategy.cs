@@ -117,10 +117,10 @@ namespace SpatialCheckPro.Processors.RelationChecks
 
                     if (!isWithinTolerance)
                     {
-                        AddDetailedError(result, "REL_CTLN_OUTSIDE_BNDRY", 
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021", 
                             "도로중심선이 도로경계면을 허용오차를 초과하여 벗어났습니다", 
                             config.RelatedTableId, oid, 
-                            $"ROAD_SE={roadSe}, 허용오차={tolerance}m", lg);
+                            $"ROAD_SE={roadSe}, 허용오차={tolerance}m", lg, config.RelatedTableName);
                     }
                 }
             }

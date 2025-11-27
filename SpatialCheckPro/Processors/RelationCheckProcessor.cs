@@ -9,6 +9,9 @@ using System.Text.RegularExpressions;
 using SpatialCheckPro.Services;
 using SpatialCheckPro.Utils;
 using SpatialCheckPro.Processors.RelationChecks;
+using NetTopologySuite.Index.Strtree;
+using NtsEnvelope = NetTopologySuite.Geometries.Envelope;
+using OgrEnvelope = OSGeo.OGR.Envelope;
 
 namespace SpatialCheckPro.Processors
 {
@@ -38,6 +41,16 @@ namespace SpatialCheckPro.Processors
         private readonly Dictionary<string, DateTime> _cacheTimestamps = new();
 
         /// <summary>
+        /// 폴리곤 공간 인덱스 캐시 (겹침 검사용)
+        /// </summary>
+        private readonly Dictionary<string, GeometryIndexCacheEntry> _polygonIndexCache = new();
+
+        /// <summary>
+        /// 폴리곤 인덱스 캐시 타임스탬프
+        /// </summary>
+        private readonly Dictionary<string, DateTime> _polygonIndexCacheTimestamps = new();
+
+        /// <summary>
         /// 관계 검수 전략 목록
         /// </summary>
         private readonly Dictionary<string, IRelationCheckStrategy> _strategies;
@@ -47,6 +60,29 @@ namespace SpatialCheckPro.Processors
         /// </summary>
         private DateTime _lastProgressUpdate = DateTime.MinValue;
         private const int PROGRESS_UPDATE_INTERVAL_MS = 200; // 200ms
+
+        private sealed class GeometryIndexCacheEntry : IDisposable
+        {
+            public GeometryIndexCacheEntry(STRtree<Geometry> index, List<Geometry> geometries, int featureCount)
+            {
+                Index = index;
+                Geometries = geometries;
+                FeatureCount = featureCount;
+            }
+
+            public STRtree<Geometry> Index { get; }
+            public List<Geometry> Geometries { get; }
+            public int FeatureCount { get; }
+
+            public void Dispose()
+            {
+                foreach (var geometry in Geometries)
+                {
+                    geometry?.Dispose();
+                }
+                Geometries.Clear();
+            }
+        }
 
         public RelationCheckProcessor(ILogger<RelationCheckProcessor> logger, 
             SpatialCheckPro.Models.GeometryCriteria geometryCriteria,
@@ -346,7 +382,7 @@ namespace SpatialCheckPro.Processors
             return ProcessAsync(filePath, config, cancellationToken);
         }
 
-        private static void AddError(ValidationResult result, string errType, string message, string table = "", string objectId = "", Geometry? geometry = null)
+        private static void AddError(ValidationResult result, string errType, string message, string table = "", string objectId = "", Geometry? geometry = null, string tableDisplayName = "")
         {
             result.IsValid = false;
             result.ErrorCount += 1;
@@ -356,9 +392,10 @@ namespace SpatialCheckPro.Processors
             {
                 ErrorCode = errType,
                 Message = message,
-                TableName = table,
+                TableId = string.IsNullOrWhiteSpace(table) ? null : table,
+                TableName = !string.IsNullOrWhiteSpace(tableDisplayName) ? tableDisplayName : string.Empty,
                 FeatureId = objectId,
-                SourceTable = table,
+                SourceTable = string.IsNullOrWhiteSpace(table) ? null : table,
                 SourceObjectId = long.TryParse(objectId, NumberStyles.Any, CultureInfo.InvariantCulture, out var oid) ? oid : null,
                 ErrorType = Models.Enums.ErrorType.Relation,
                 Severity = Models.Enums.ErrorSeverity.Error,
@@ -371,7 +408,7 @@ namespace SpatialCheckPro.Processors
         /// <summary>
         /// 더 상세한 오류 정보를 포함한 오류 추가 (지오메트리 정보 포함)
         /// </summary>
-        private static void AddDetailedError(ValidationResult result, string errType, string message, string table = "", string objectId = "", string additionalInfo = "", Geometry? geometry = null)
+        private static void AddDetailedError(ValidationResult result, string errType, string message, string table = "", string objectId = "", string additionalInfo = "", Geometry? geometry = null, string tableDisplayName = "")
         {
             result.IsValid = false;
             result.ErrorCount += 1;
@@ -383,9 +420,10 @@ namespace SpatialCheckPro.Processors
             {
                 ErrorCode = errType,
                 Message = fullMessage,
-                TableName = table,
+                TableId = string.IsNullOrWhiteSpace(table) ? null : table,
+                TableName = !string.IsNullOrWhiteSpace(tableDisplayName) ? tableDisplayName : string.Empty,
                 FeatureId = objectId,
-                SourceTable = table,
+                SourceTable = string.IsNullOrWhiteSpace(table) ? null : table,
                 SourceObjectId = long.TryParse(objectId, NumberStyles.Any, CultureInfo.InvariantCulture, out var oid) ? oid : null,
                 ErrorType = Models.Enums.ErrorType.Relation,                
                 Severity = Models.Enums.ErrorSeverity.Error,
@@ -590,9 +628,9 @@ namespace SpatialCheckPro.Processors
             foreach (var bldOid in buildingsWithoutPoints)
             {
                 var geometry = GetGeometryByOID(buld, bldOid);
-                AddError(result, "REL_BULD_CTPT_MISSING", 
+                AddError(result, config.RuleId ?? "LOG_TOP_REL_014", 
                     "건물 내 건물중심점이 없습니다", 
-                    config.MainTableId, bldOid.ToString(CultureInfo.InvariantCulture), geometry);
+                    config.MainTableId, bldOid.ToString(CultureInfo.InvariantCulture), geometry, config.MainTableName);
                 geometry?.Dispose();
             }
             
@@ -600,9 +638,9 @@ namespace SpatialCheckPro.Processors
             foreach (var ptOid in pointsOutsideBuildings)
             {
                 var geometry = GetGeometryByOID(ctpt, ptOid);
-                AddError(result, "REL_CTPT_OUTSIDE_BULD", 
+                AddError(result, config.RuleId ?? "LOG_TOP_REL_014", 
                     "건물 외부에 건물중심점이 존재합니다", 
-                    config.RelatedTableId, ptOid.ToString(CultureInfo.InvariantCulture), geometry);
+                    config.RelatedTableId, ptOid.ToString(CultureInfo.InvariantCulture), geometry, config.RelatedTableName);
                 geometry?.Dispose();
             }
             
@@ -714,10 +752,10 @@ namespace SpatialCheckPro.Processors
                     if (!isWithinTolerance)
                     {
                         _logger.LogDebug("도로중심선 오류 검출: OID={OID}, ROAD_SE={RoadSe} - 허용오차를 초과하여 경계면을 벗어남", oid, roadSe);
-                        AddDetailedError(result, "REL_CTLN_OUTSIDE_BNDRY", 
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021", 
                             "도로중심선이 도로경계면을 허용오차를 초과하여 벗어났습니다", 
                             config.RelatedTableId, oid, 
-                            $"ROAD_SE={roadSe}, 허용오차={tolerance}m", lg);
+                            $"ROAD_SE={roadSe}, 허용오차={tolerance}m", lg, config.RelatedTableName);
                     }
                     else
                     {
@@ -733,7 +771,7 @@ namespace SpatialCheckPro.Processors
             if (result.ErrorCount > 0)
             {
                 _logger.LogWarning("도로중심선 관계 검수에서 {ErrorCount}개 오류 발견!", result.ErrorCount);
-                foreach (var error in result.Errors.Where(e => e.ErrorCode == "REL_CTLN_OUTSIDE_BNDRY"))
+                foreach (var error in result.Errors.Where(e => e.ErrorCode == (config.RuleId ?? "LOG_TOP_REL_021")))
                 {
                     _logger.LogWarning("오류 상세: {Message}", error.Message);
                 }
@@ -815,10 +853,10 @@ namespace SpatialCheckPro.Processors
                     if (!verticesMatch)
                     {
                         _logger.LogDebug("면형도로시설 오류 검출: OID={OID}, PG_RDFC_SE={Code} - 버텍스가 경계면과 일치하지 않음", oid, code);
-                        AddDetailedError(result, "REL_ARRFC_VERTEX_MISMATCH", 
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_025", 
                             $"면형도로시설의 버텍스가 도로경계면의 버텍스와 일치하지 않습니다", 
                             config.MainTableId, oid, 
-                            $"PG_RDFC_SE={code}, 허용오차={tolerance}m", pg);
+                            $"PG_RDFC_SE={code}, 허용오차={tolerance}m", pg, config.MainTableName);
                     }
                 }
             }
@@ -830,7 +868,7 @@ namespace SpatialCheckPro.Processors
             if (result.ErrorCount > 0)
             {
                 _logger.LogWarning("면형도로시설 버텍스 일치 검수에서 {ErrorCount}개 오류 발견!", result.ErrorCount);
-                foreach (var error in result.Errors.Where(e => e.ErrorCode == "REL_ARRFC_VERTEX_MISMATCH"))
+                foreach (var error in result.Errors.Where(e => e.ErrorCode == (config.RuleId ?? "LOG_TOP_REL_025")))
                 {
                     _logger.LogWarning("오류 상세: {Message}", error.Message);
                 }
@@ -1027,6 +1065,91 @@ namespace SpatialCheckPro.Processors
             }
             
             return union;
+        }
+
+        private GeometryIndexCacheEntry BuildPolygonIndexWithCache(Layer layer, string cacheKey)
+        {
+            if (_polygonIndexCache.TryGetValue(cacheKey, out var cachedEntry))
+            {
+                _logger.LogInformation("Polygon 인덱스 캐시 히트: {Key}", cacheKey);
+                return cachedEntry;
+            }
+
+            if (_polygonIndexCache.Count > 5)
+            {
+                ClearExpiredPolygonIndexCache(TimeSpan.FromMinutes(15));
+            }
+
+            _logger.LogInformation("Polygon 인덱스 생성 시작: {Key}", cacheKey);
+            var startTime = DateTime.Now;
+
+            var geometries = new List<Geometry>();
+            var index = new STRtree<Geometry>();
+            int featureCount = 0;
+
+            layer.ResetReading();
+            Feature? feature;
+            while ((feature = layer.GetNextFeature()) != null)
+            {
+                using (feature)
+                {
+                    var geometryRef = feature.GetGeometryRef();
+                    if (geometryRef == null || geometryRef.IsEmpty())
+                    {
+                        continue;
+                    }
+
+                    var clone = geometryRef.Clone();
+                    geometries.Add(clone);
+
+                    var envelope = new OgrEnvelope();
+                    clone.GetEnvelope(envelope);
+                    var ntsEnvelope = new NtsEnvelope(envelope.MinX, envelope.MaxX, envelope.MinY, envelope.MaxY);
+                    index.Insert(ntsEnvelope, clone);
+
+                    featureCount++;
+                    if (featureCount % 1000 == 0)
+                    {
+                        _logger.LogDebug("Polygon 인덱스 빌드 진행: {Count}개 수집", featureCount);
+                    }
+                }
+            }
+
+            index.Build();
+
+            var entry = new GeometryIndexCacheEntry(index, geometries, featureCount);
+            _polygonIndexCache[cacheKey] = entry;
+            _polygonIndexCacheTimestamps[cacheKey] = DateTime.Now;
+
+            var elapsed = (DateTime.Now - startTime).TotalSeconds;
+            _logger.LogInformation("Polygon 인덱스 생성 완료: {Key}, {Count}개 피처, 소요시간: {Elapsed:F2}초",
+                cacheKey, featureCount, elapsed);
+
+            return entry;
+        }
+
+        private void ClearExpiredPolygonIndexCache(TimeSpan? maxAge = null)
+        {
+            var cutoff = DateTime.Now - (maxAge ?? TimeSpan.FromMinutes(30));
+            var expiredKeys = _polygonIndexCacheTimestamps
+                .Where(kvp => kvp.Value < cutoff)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                if (_polygonIndexCache.TryGetValue(key, out var entry))
+                {
+                    entry.Dispose();
+                    _polygonIndexCache.Remove(key);
+                }
+                _polygonIndexCacheTimestamps.Remove(key);
+            }
+
+            if (expiredKeys.Count > 0)
+            {
+                _logger.LogInformation("만료된 Polygon 인덱스 캐시 정리: {Count}개", expiredKeys.Count);
+            }
         }
         
         /// <summary>
@@ -1700,9 +1823,9 @@ namespace SpatialCheckPro.Processors
                             {
                                 var oidStr = oid.ToString(CultureInfo.InvariantCulture);
                                 var connectedOidStr = candidate.Oid.ToString(CultureInfo.InvariantCulture);
-                                AddDetailedError(result, "REL_CONNECTED_LINES_ATTR_MISMATCH",
+                                AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_002",
                                     $"연결된 등고선의 높이값이 일치하지 않음: {currentAttrValue.Value:F2}m vs {connectedAttrValue.Value:F2}m (차이: {diff:F2}m)",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
                             }
                         }
                     }
@@ -1729,9 +1852,9 @@ namespace SpatialCheckPro.Processors
                             {
                                 var oidStr = oid.ToString(CultureInfo.InvariantCulture);
                                 var connectedOidStr = candidate.Oid.ToString(CultureInfo.InvariantCulture);
-                                AddDetailedError(result, "REL_CONNECTED_LINES_ATTR_MISMATCH",
+                                AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_002",
                                     $"연결된 등고선의 높이값이 일치하지 않음: {currentAttrValue.Value:F2}m vs {connectedAttrValue.Value:F2}m (차이: {diff:F2}m)",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
                             }
                         }
                     }
@@ -1864,18 +1987,18 @@ namespace SpatialCheckPro.Processors
                     var length = Math.Abs(segment.Geom.Length());
                     if (length <= tolerance)
                     {
-                        AddDetailedError(result, "REL_CTLN_END_SHORT", 
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_028", 
                             $"도로중심선 끝점이 {tolerance}m 이내 타 선과 근접하나 스냅되지 않음(엔더숏)", 
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom, config.MainTableName);
                     }
                     else
                     {
                         string which = (startNearAnyLine && !startConnected) && (endNearAnyLine && !endConnected) 
                             ? "양쪽" 
                             : ((startNearAnyLine && !startConnected) ? "시작점" : "끝점");
-                        AddDetailedError(result, "REL_CTLN_DANGLING", 
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_028", 
                             $"도로중심선 {which}이(가) {tolerance}m 이내 타 선과 근접하나 연결되지 않음", 
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom, config.MainTableName);
                     }
                 }
             }
@@ -1902,7 +2025,8 @@ namespace SpatialCheckPro.Processors
             var centerline = getLayer(config.RelatedTableId);
             if (boundary == null || centerline == null) return;
 
-            using var _filter = ApplyAttributeFilterIfMatch(centerline, fieldFilter);
+            // FieldFilter는 MainTable(도로경계면)에 적용해야 함 (특정 도로경계면 제외)
+            using var _filter = ApplyAttributeFilterIfMatch(boundary, fieldFilter);
 
             _logger.LogInformation("관계 검수 시작: RuleId={RuleId}, CaseType={CaseType}, MainTable={MainTable}, RelatedTable={RelatedTable}", 
                 config.RuleId, config.CaseType, config.MainTableId, config.RelatedTableId);
@@ -1940,6 +2064,17 @@ namespace SpatialCheckPro.Processors
                     
                     // SetSpatialFilter를 사용하여 공간 인덱스 활용 (GDAL 내부 최적화)
                     centerline.SetSpatialFilter(bg);
+                    
+                    // 속성 필터 적용 (FieldFilter가 있는 경우)
+                    using var attrFilter = ApplyAttributeFilterIfMatch(centerline, fieldFilter);
+                    // 이미 상단(1907)에서 _filter로 적용했으나, SetSpatialFilter와 함께 사용 시 재적용 필요할 수 있음
+                    // 하지만 using _filter가 메서드 전체 범위이므로 여기서 다시 적용할 필요 없음.
+                    // 대신 _filter가 boundary 루프 내부에서 영향을 미치는지 확인 필요.
+                    // OGR에서 SetAttributeFilter는 Layer 전체에 적용되므로 _filter는 이미 적용 상태임.
+                    // 그러나 config.FieldFilter는 'road_se NOT IN (...)' 형태이므로
+                    // EvaluateBoundaryMissingCenterline 호출 시 전달된 fieldFilter를 사용해야 함.
+                    // 상단 1907라인의 _filter는 이미 적용되어 있으므로 추가 작업 불필요.
+                    
                     var hasAny = centerline.GetNextFeature() != null;
                     centerline.ResetReading();
                     centerline.SetSpatialFilter(null);
@@ -1947,7 +2082,7 @@ namespace SpatialCheckPro.Processors
                     if (!hasAny)
                     {
                         var oid = bf.GetFID().ToString(CultureInfo.InvariantCulture);
-                        AddDetailedError(result, "REL_BNDRY_CENTERLINE_MISSING", "도로경계면에 도로중심선이 누락됨", config.MainTableId, oid, "", bg);
+                        AddDetailedError(result, config.RuleId ?? "COM_OMS_REL_001", "도로경계면에 도로중심선이 누락됨", config.MainTableId, oid, "", bg, config.MainTableName);
                     }
                 }
             }
@@ -1972,28 +2107,18 @@ namespace SpatialCheckPro.Processors
             _logger.LogInformation("관계 검수 시작: RuleId={RuleId}, CaseType={CaseType}, MainTable={MainTable}, RelatedTable={RelatedTable}", 
                 config.RuleId, config.CaseType, config.MainTableId, config.RelatedTableId);
 
-            // 성능 최적화: Union Geometry 캐시 사용
-            // 관련 레이어를 한 번 Union하여 캐시하고, 각 건물과 Union 지오메트리만 비교
-            // 이 방식은 피처 수와 무관하게 일정한 성능을 제공 (O(건물 수) → O(건물 수))
-            var cacheKey = $"union_{config.RelatedTableId}_{fieldFilter}";
-            var unionGeometry = BuildUnionGeometryWithCache(polyB, cacheKey);
-            
-            if (unionGeometry == null || unionGeometry.IsEmpty())
+            // 성능 최적화: 관련 레이어 공간 인덱스 캐시 사용
+            var cacheKey = $"poly_index_{config.RelatedTableId}_{fieldFilter}";
+            var polygonIndexEntry = BuildPolygonIndexWithCache(polyB, cacheKey);
+
+            if (polygonIndexEntry.FeatureCount == 0)
             {
                 _logger.LogInformation("관련 레이어에 피처가 없습니다: {RelatedTable}", config.RelatedTableId);
                 RaiseProgress(config.RuleId ?? string.Empty, config.CaseType ?? string.Empty, 0, 0, completed: true);
                 return;
             }
 
-            // Union 지오메트리 유효성 보장
-            try 
-            { 
-                unionGeometry = unionGeometry.MakeValid(Array.Empty<string>()); 
-            } 
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Union 지오메트리 유효성 보정 실패, 원본 사용");
-            }
+            var polygonIndex = polygonIndexEntry.Index;
 
             polyA.ResetReading();
             var total = polyA.GetFeatureCount(1);
@@ -2025,39 +2150,68 @@ namespace SpatialCheckPro.Processors
                     var ga = fa.GetGeometryRef();
                     if (ga == null || ga.IsEmpty()) continue;
                     
-                    // Envelope 기반 사전 필터링 (빠른 제외)
-                    var envelope = new Envelope();
+                    // 후보 폴리곤만 질의 후 교차 검사
+                    var envelope = new OgrEnvelope();
                     ga.GetEnvelope(envelope);
-                    var unionEnvelope = new Envelope();
-                    unionGeometry.GetEnvelope(unionEnvelope);
-                    
-                    // Envelope이 겹치지 않으면 교차 불가능
-                    if (envelope.MaxX < unionEnvelope.MinX || envelope.MinX > unionEnvelope.MaxX ||
-                        envelope.MaxY < unionEnvelope.MinY || envelope.MinY > unionEnvelope.MaxY)
+                    var queryEnvelope = new NtsEnvelope(envelope.MinX, envelope.MaxX, envelope.MinY, envelope.MaxY);
+                    var candidates = polygonIndex.Query(queryEnvelope);
+                    if (candidates == null || candidates.Count == 0)
                     {
-                        continue; // 교차 없음
+                        continue;
                     }
-                    
-                    // Union 지오메트리와 교차 검사 (O(1) 연산)
-                    try
+
+                    var oid = fa.GetFID().ToString(CultureInfo.InvariantCulture);
+
+                    foreach (Geometry candidate in candidates)
                     {
-                        using var inter = ga.Intersection(unionGeometry);
-                        if (inter != null && !inter.IsEmpty())
+                        token.ThrowIfCancellationRequested();
+                        try
                         {
-                            // 겹침 면적이 tolerance 초과면 오류
-                            var area = GetSurfaceArea(inter);
-                            if (area > tolerance)
+                            using var inter = ga.Intersection(candidate);
+                            if (inter == null || inter.IsEmpty())
                             {
-                                var oid = fa.GetFID().ToString(CultureInfo.InvariantCulture);
-                                AddDetailedError(result, "REL_BULD_OVERLAP", 
-                                    $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함", 
-                                    config.MainTableId, oid, "", ga);
+                                continue;
+                            }
+
+                            var area = GetSurfaceArea(inter);
+                            if (area <= tolerance)
+                            {
+                                continue;
+                            }
+
+                            var geomType = inter.GetGeometryType();
+                            var isCollection = geomType == wkbGeometryType.wkbGeometryCollection ||
+                                               geomType == wkbGeometryType.wkbMultiPolygon;
+
+                            if (isCollection)
+                            {
+                                int count = inter.GetGeometryCount();
+                                for (int i = 0; i < count; i++)
+                                {
+                                    using var subGeom = inter.GetGeometryRef(i)?.Clone();
+                                    if (subGeom != null && !subGeom.IsEmpty())
+                                    {
+                                        var subArea = GetSurfaceArea(subGeom);
+                                        if (subArea > 0)
+                                        {
+                                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_001",
+                                                $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함 (부분 {i + 1})",
+                                                config.MainTableId, oid, $"침범 부분 {i + 1}/{count}", subGeom, config.MainTableName);
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_001",
+                                    $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함",
+                                    config.MainTableId, oid, string.Empty, inter, config.MainTableName);
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "교차 검사 중 오류 발생: OID={Oid}", fa.GetFID());
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "교차 검사 중 오류 발생: OID={Oid}", fa.GetFID());
+                        }
                     }
                 }
             }
@@ -2135,9 +2289,9 @@ namespace SpatialCheckPro.Processors
                     if (pg == null || pg.IsEmpty()) continue;
                     
                     // Envelope 기반 사전 필터링 (빠른 제외)
-                    var envelope = new Envelope();
+                    var envelope = new OgrEnvelope();
                     pg.GetEnvelope(envelope);
-                    var unionEnvelope = new Envelope();
+                    var unionEnvelope = new OgrEnvelope();
                     lineUnion.GetEnvelope(unionEnvelope);
                     
                     // Envelope이 겹치지 않으면 교차 불가능
@@ -2154,7 +2308,34 @@ namespace SpatialCheckPro.Processors
                         if (inter != null && !inter.IsEmpty())
                         {
                             var oid = bf.GetFID().ToString(CultureInfo.InvariantCulture);
-                            AddDetailedError(result, "REL_BULD_INTERSECT_LINE", $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함", config.MainTableId, oid, "", pg);
+                            
+                            // 교차 결과가 복합 지오메트리인 경우 분해하여 각각 오류 생성
+                            var geomType = inter.GetGeometryType();
+                            var isCollection = geomType == wkbGeometryType.wkbGeometryCollection || 
+                                               geomType == wkbGeometryType.wkbMultiLineString || 
+                                               geomType == wkbGeometryType.wkbMultiPoint;
+
+                            if (isCollection)
+                            {
+                                int count = inter.GetGeometryCount();
+                                for (int i = 0; i < count; i++)
+                                {
+                                    using var subGeom = inter.GetGeometryRef(i).Clone(); // Clone 필수 (참조만 가져오면 inter dispose 시 문제됨)
+                                    if (subGeom != null && !subGeom.IsEmpty())
+                                    {
+                                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_004", 
+                                            $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함 (부분 {i + 1})", 
+                                            config.MainTableId, oid, $"교차 부분 {i + 1}/{count}", subGeom, config.MainTableName);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // 단일 지오메트리인 경우
+                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_004", 
+                                    $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함", 
+                                    config.MainTableId, oid, "", inter, config.MainTableName);
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -2217,15 +2398,26 @@ namespace SpatialCheckPro.Processors
                     
                     // SetSpatialFilter를 사용하여 공간 인덱스 활용 (GDAL 내부 최적화)
                     pt.SetSpatialFilter(pg);
-                    var hasInside = pt.GetNextFeature() != null;
+                    
+                    Feature? insidePoint;
+                    while ((insidePoint = pt.GetNextFeature()) != null)
+                    {
+                        using (insidePoint)
+                        {
+                            var ptGeom = insidePoint.GetGeometryRef();
+                            if (ptGeom != null)
+                            {
+                                var oid = pf.GetFID().ToString(CultureInfo.InvariantCulture);
+                                var ptOid = insidePoint.GetFID().ToString(CultureInfo.InvariantCulture);
+                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_010", 
+                                    $"{config.MainTableName}(이) {config.RelatedTableName}을 포함함 (포함된 점 OID: {ptOid})", 
+                                    config.MainTableId, oid, $"포함된 점: {ptOid}", ptGeom, config.MainTableName);
+                            }
+                        }
+                    }
+                    
                     pt.ResetReading();
                     pt.SetSpatialFilter(null);
-                    
-                    if (hasInside)
-                    {
-                        var oid = pf.GetFID().ToString(CultureInfo.InvariantCulture);
-                        AddDetailedError(result, "REL_POLY_CONTAIN_POINT", $"{config.MainTableName}(이) {config.RelatedTableName}을 포함함", config.MainTableId, oid, "", pg);
-                    }
                 }
             }
             
@@ -2417,10 +2609,11 @@ namespace SpatialCheckPro.Processors
             // 세미콜론으로 분리: 속성 필드 부분과 파라미터 부분
             var parts = fieldFilter.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var attributeFieldsPart = parts[0]; // 첫 번째 부분은 속성 필드명들
-            
+
             // 기본값: geometry_criteria.csv에서 읽거나 하드코딩된 기본값
             var intersectionThreshold = _geometryCriteria?.CenterlineIntersectionThreshold ?? 3;
             var angleThreshold = _geometryCriteria?.CenterlineAngleThreshold ?? 30.0;
+            var excludedRoadTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 파라미터 파싱 (세미콜론으로 구분된 부분들)
             for (int i = 1; i < parts.Length; i++)
@@ -2444,6 +2637,18 @@ namespace SpatialCheckPro.Processors
                         angleThreshold = value;
                     }
                 }
+                else if (param.StartsWith("exclude_road_types=", StringComparison.OrdinalIgnoreCase))
+                {
+                    var valueStr = param.Substring("exclude_road_types=".Length);
+                    var codes = valueStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var code in codes)
+                    {
+                        if (!string.IsNullOrWhiteSpace(code))
+                        {
+                            excludedRoadTypes.Add(code);
+                        }
+                    }
+                }
             }
 
             // 속성 필드명 파싱
@@ -2463,9 +2668,18 @@ namespace SpatialCheckPro.Processors
             var allSegments = new List<LineSegmentInfo>();
             var endpointIndex = new Dictionary<string, List<EndpointInfo>>();
             var attributeValues = new Dictionary<long, Dictionary<string, string?>>(); // OID -> (필드명 -> 속성값)
+            var excludedSegmentOids = new HashSet<long>();
 
             Feature? f;
-            var fieldIndices = new Dictionary<string, int>(); // 필드명 -> 필드 인덱스
+            var fieldIndices = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // 필드명 -> 필드 인덱스
+            var roadTypeFieldName = attributeFields.FirstOrDefault(field =>
+                string.Equals(field, "road_se", StringComparison.OrdinalIgnoreCase));
+
+            if (excludedRoadTypes.Count > 0 && roadTypeFieldName == null)
+            {
+                _logger.LogWarning("exclude_road_types 파라미터가 지정되었으나 FieldFilter에 road_se 필드가 포함되지 않았습니다: {FieldFilter}",
+                    fieldFilter);
+            }
 
             while ((f = line.GetNextFeature()) != null)
             {
@@ -2502,15 +2716,26 @@ namespace SpatialCheckPro.Processors
                     }
 
                     // 속성값 읽기
-                    var attrDict = new Dictionary<string, string?>();
+                    var attrDict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
                     foreach (var kvp in fieldIndices)
                     {
                         var fieldName = kvp.Key;
                         var fieldIdx = kvp.Value;
                         var strValue = f.GetFieldAsString(fieldIdx);
-                        attrDict[fieldName] = string.IsNullOrWhiteSpace(strValue) ? null : strValue;
+                        attrDict[fieldName] = string.IsNullOrWhiteSpace(strValue) ? null : strValue.Trim();
                     }
                     attributeValues[oid] = attrDict;
+
+                    if (roadTypeFieldName != null &&
+                        excludedRoadTypes.Count > 0 &&
+                        attrDict.TryGetValue(roadTypeFieldName, out var roadTypeValue) &&
+                        !string.IsNullOrWhiteSpace(roadTypeValue) &&
+                        excludedRoadTypes.Contains(roadTypeValue))
+                    {
+                        excludedSegmentOids.Add(oid);
+                        _logger.LogDebug("제외 도로구분으로 중심선 속성불일치 검사 생략: OID={Oid}, 코드={Code}",
+                            oid, roadTypeValue);
+                    }
 
                     var pCount = lineString.GetPointCount();
                     var sx = lineString.GetX(0);
@@ -2552,6 +2777,12 @@ namespace SpatialCheckPro.Processors
             {
                 token.ThrowIfCancellationRequested();
                 idx++;
+
+                if (excludedSegmentOids.Contains(segment.Oid))
+                {
+                    continue;
+                }
+
                 if (idx % 50 == 0 || idx == total)
                 {
                     RaiseProgress(config.RuleId ?? string.Empty, config.CaseType ?? string.Empty, idx, total);
@@ -2578,6 +2809,7 @@ namespace SpatialCheckPro.Processors
                 foreach (var candidate in startCandidates)
                 {
                     if (candidate.Oid == oid) continue;
+                    if (excludedSegmentOids.Contains(candidate.Oid)) continue;
 
                     var dist = Distance(sx, sy, candidate.X, candidate.Y);
                     if (dist <= tolerance)
@@ -2660,9 +2892,9 @@ namespace SpatialCheckPro.Processors
                                 var oidStr = oid.ToString(CultureInfo.InvariantCulture);
                                 var connectedOidStr = candidate.Oid.ToString(CultureInfo.InvariantCulture);
                                 var mismatchDetails = string.Join(", ", mismatchedFields.Select(f => $"{f}: {currentAttrs.GetValueOrDefault(f) ?? "NULL"} vs {connectedAttrs.GetValueOrDefault(f) ?? "NULL"}"));
-                                AddDetailedError(result, "REL_CENTERLINE_ATTR_MISMATCH",
+                                AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_001",
                                     $"연결된 중심선의 속성값이 불일치함: {mismatchDetails}",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
                             }
                         }
                     }
@@ -2672,6 +2904,7 @@ namespace SpatialCheckPro.Processors
                 foreach (var candidate in endCandidates)
                 {
                     if (candidate.Oid == oid) continue;
+                    if (excludedSegmentOids.Contains(candidate.Oid)) continue;
 
                     var dist = Distance(ex, ey, candidate.X, candidate.Y);
                     if (dist <= tolerance)
@@ -2753,9 +2986,9 @@ namespace SpatialCheckPro.Processors
                                 var oidStr = oid.ToString(CultureInfo.InvariantCulture);
                                 var connectedOidStr = candidate.Oid.ToString(CultureInfo.InvariantCulture);
                                 var mismatchDetails = string.Join(", ", mismatchedFields.Select(f => $"{f}: {currentAttrs.GetValueOrDefault(f) ?? "NULL"} vs {connectedAttrs.GetValueOrDefault(f) ?? "NULL"}"));
-                                AddDetailedError(result, "REL_CENTERLINE_ATTR_MISMATCH",
+                                AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_001",
                                     $"연결된 중심선의 속성값이 불일치함: {mismatchDetails}",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
                             }
                         }
                     }
@@ -2852,9 +3085,9 @@ namespace SpatialCheckPro.Processors
                                 {
                                     var oid1Str = oid1.ToString(CultureInfo.InvariantCulture);
                                     var oid2Str = oid2.ToString(CultureInfo.InvariantCulture);
-                                    AddDetailedError(result, "REL_CONTOUR_INTERSECTION",
+                                    AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_029",
                                         $"등고선이 다른 등고선과 교차함: 피처 {oid1Str}와 {oid2Str}",
-                                        config.MainTableId, oid1Str, $"교차 피처: {oid2Str}", geom1);
+                                        config.MainTableId, oid1Str, $"교차 피처: {oid2Str}", intersection, config.MainTableName);
                                 }
                             }
                         }
@@ -2960,9 +3193,9 @@ namespace SpatialCheckPro.Processors
                             // 90도 미만이면 오류 (각도가 작을수록 더 날카롭게 꺽임)
                             if (angle < angleThreshold)
                             {
-                                AddDetailedError(result, "REL_CONTOUR_SHARP_BEND",
+                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_GEO_014",
                                     $"등고선이 {angle:F1}도로 꺽임 (임계값: {angleThreshold}도 미만)",
-                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g);
+                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g, config.MainTableName);
                                 break; // 한 피처당 하나의 오류만 보고
                             }
                         }
@@ -3063,9 +3296,9 @@ namespace SpatialCheckPro.Processors
                             // 6도 이하이면 오류 (각도가 작을수록 더 날카롭게 꺽임)
                             if (angle <= angleThreshold)
                             {
-                                AddDetailedError(result, "REL_ROAD_SHARP_BEND",
+                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_GEO_013",
                                     $"도로중심선이 {angle:F1}도로 꺽임 (임계값: {angleThreshold}도 이하)",
-                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g);
+                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g, config.MainTableName);
                                 break; // 한 피처당 하나의 오류만 보고
                             }
                         }
@@ -3259,57 +3492,54 @@ namespace SpatialCheckPro.Processors
                     {
                         foreach (var (riverOid, riverGeom, riverName) in riverFeatures)
                         {
-                            using (riverGeom)
+                            // 지오메트리 유효성 검사
+                            if (riverGeom == null)
                             {
-                                // 지오메트리 유효성 검사
-                                if (riverGeom == null)
+                                _logger.LogDebug("하천중심선 지오메트리가 NULL: OID={OID}", riverOid);
+                                continue;
+                            }
+                            
+                            try
+                            {
+                                if (riverGeom.IsEmpty())
                                 {
-                                    _logger.LogDebug("하천중심선 지오메트리가 NULL: OID={OID}", riverOid);
+                                    _logger.LogDebug("하천중심선 지오메트리가 비어있음: OID={OID}", riverOid);
                                     continue;
                                 }
-                                
-                                try
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "하천중심선 지오메트리 IsEmpty() 검사 중 오류: OID={OID}", riverOid);
+                                continue;
+                            }
+                            
+                            // 교량과 하천중심선이 교차하거나 근접한지 확인 (NULL 포인터 예외 방지)
+                            bool intersects = false;
+                            try
+                            {
+                                intersects = buffer.Intersects(riverGeom);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "교량-하천중심선 교차 검사 중 오류: 교량 OID={BridgeOID}, 하천 OID={RiverOID}", 
+                                    bridgeOid, riverOid);
+                                continue; // 오류 발생 시 다음 하천으로 진행
+                            }
+                            
+                            if (intersects)
+                            {
+                                // 하천명 일치 여부 확인
+                                if (!string.IsNullOrEmpty(bridgeName) && !string.IsNullOrEmpty(riverName))
                                 {
-                                    if (riverGeom.IsEmpty())
+                                    if (!string.Equals(bridgeName, riverName, StringComparison.OrdinalIgnoreCase))
                                     {
-                                        _logger.LogDebug("하천중심선 지오메트리가 비어있음: OID={OID}", riverOid);
-                                        continue;
+                                        AddDetailedError(result, config.RuleId ?? "THE_CLS_REL_001",
+                                            $"교량의 하천명('{bridgeName}')과 하천중심선의 하천명('{riverName}')이 일치하지 않습니다",
+                                            config.MainTableId, bridgeOid.ToString(CultureInfo.InvariantCulture),
+                                            $"교량 하천명='{bridgeName}', 하천중심선 하천명='{riverName}'", bg, config.MainTableName);
                                     }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogWarning(ex, "하천중심선 지오메트리 IsEmpty() 검사 중 오류: OID={OID}", riverOid);
-                                    continue;
-                                }
-                                
-                                // 교량과 하천중심선이 교차하거나 근접한지 확인 (NULL 포인터 예외 방지)
-                                bool intersects = false;
-                                try
-                                {
-                                    intersects = buffer.Intersects(riverGeom);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogWarning(ex, "교량-하천중심선 교차 검사 중 오류: 교량 OID={BridgeOID}, 하천 OID={RiverOID}", 
-                                        bridgeOid, riverOid);
-                                    continue; // 오류 발생 시 다음 하천으로 진행
-                                }
-                                
-                                if (intersects)
-                                {
-                                    // 하천명 일치 여부 확인
-                                    if (!string.IsNullOrEmpty(bridgeName) && !string.IsNullOrEmpty(riverName))
-                                    {
-                                        if (!string.Equals(bridgeName, riverName, StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            AddDetailedError(result, "REL_BRIDGE_RIVER_NAME_MISMATCH",
-                                                $"교량의 하천명('{bridgeName}')과 하천중심선의 하천명('{riverName}')이 일치하지 않습니다",
-                                                config.MainTableId, bridgeOid.ToString(CultureInfo.InvariantCulture),
-                                                $"교량 하천명='{bridgeName}', 하천중심선 하천명='{riverName}'", bg);
-                                        }
-                                        // 일치하거나 불일치하는 경우 모두 처리 완료이므로 다음 교량으로 진행
-                                        break;
-                                    }
+                                    // 일치하거나 불일치하는 경우 모두 처리 완료이므로 다음 교량으로 진행
+                                    break;
                                 }
                             }
                         }
@@ -3406,18 +3636,18 @@ namespace SpatialCheckPro.Processors
                     try
                     {
                         // Envelope 기반 사전 필터링
-                        var env = new Envelope();
+                        var env = new OgrEnvelope();
                         geom.GetEnvelope(env);
-                        var boundaryEnv = new Envelope();
+                        var boundaryEnv = new OgrEnvelope();
                         boundaryUnion.GetEnvelope(boundaryEnv);
                         
                         if (env.MaxX < boundaryEnv.MinX || env.MinX > boundaryEnv.MaxX ||
                             env.MaxY < boundaryEnv.MinY || env.MinY > boundaryEnv.MaxY)
                         {
                             // Envelope가 겹치지 않으면 포함 관계 불가능
-                            AddDetailedError(result, "REL_POLYGON_NOT_WITHIN",
+                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_025",
                                 $"{config.MainTableName}이 {config.RelatedTableName}에 포함되지 않습니다",
-                                config.MainTableId, oid, $"PG_RDFC_SE={code}", geom);
+                                config.MainTableId, oid, $"PG_RDFC_SE={code}", geom, config.MainTableName);
                             continue;
                         }
 
@@ -3451,9 +3681,9 @@ namespace SpatialCheckPro.Processors
 
                         if (!isWithin)
                         {
-                            AddDetailedError(result, "REL_POLYGON_NOT_WITHIN",
+                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_025",
                                 $"{config.MainTableName}이 {config.RelatedTableName}에 포함되지 않습니다",
-                                config.MainTableId, oid, $"PG_RDFC_SE={code}, 허용오차={tolerance}m", geom);
+                                config.MainTableId, oid, $"PG_RDFC_SE={code}, 허용오차={tolerance}m", geom, config.MainTableName);
                         }
                     }
                     catch (Exception ex)
@@ -3521,18 +3751,18 @@ namespace SpatialCheckPro.Processors
                     try
                     {
                         // Envelope 기반 사전 필터링
-                        var lineEnv = new Envelope();
+                        var lineEnv = new OgrEnvelope();
                         lineGeom.GetEnvelope(lineEnv);
-                        var polyEnv = new Envelope();
+                        var polyEnv = new OgrEnvelope();
                         polygonUnion.GetEnvelope(polyEnv);
                         
                         if (lineEnv.MaxX < polyEnv.MinX || lineEnv.MinX > polyEnv.MaxX ||
                             lineEnv.MaxY < polyEnv.MinY || lineEnv.MinY > polyEnv.MaxY)
                         {
                             // Envelope가 겹치지 않으면 포함 관계 불가능
-                            AddDetailedError(result, "REL_LINE_NOT_IN_POLYGON",
+                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021",
                                 $"하천경계가 실폭하천에 포함되지 않습니다",
-                                config.RelatedTableId, oid, string.Empty, lineGeom);
+                                config.RelatedTableId, oid, string.Empty, lineGeom, config.RelatedTableName);
                             continue;
                         }
 
@@ -3566,9 +3796,9 @@ namespace SpatialCheckPro.Processors
 
                         if (!isWithin)
                         {
-                            AddDetailedError(result, "REL_LINE_NOT_IN_POLYGON",
+                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021",
                                 $"하천경계가 실폭하천에 포함되지 않습니다",
-                                config.RelatedTableId, oid, $"허용오차={tolerance}m", lineGeom);
+                                config.RelatedTableId, oid, $"허용오차={tolerance}m", lineGeom, config.RelatedTableName);
                         }
                     }
                     catch (Exception ex)
@@ -3705,7 +3935,7 @@ namespace SpatialCheckPro.Processors
                                         if (isInside || isOverlap)
                                         {
                                             totalErrors++;
-                                            AddDetailedError(result, "REL_OBJECT_IN_FMLND_BOUNDARY",
+                                            AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_016",
                                                 $"{tableId} 객체가 경지경계 내부에 포함되거나 겹칩니다",
                                                 tableId, targetOid.ToString(CultureInfo.InvariantCulture), 
                                                 isInside ? "포함" : "겹침", targetGeom);
@@ -3874,7 +4104,7 @@ namespace SpatialCheckPro.Processors
                         if (geom == null || geom.IsEmpty()) continue;
 
                         var oid = feature.GetFID();
-                        var geomEnv = new Envelope();
+                        var geomEnv = new OgrEnvelope();
                         geom.GetEnvelope(geomEnv);
 
                         // Envelope 기반 사전 필터링으로 후보 홀만 검사
@@ -3882,7 +4112,7 @@ namespace SpatialCheckPro.Processors
                         {
                             try
                             {
-                                var holeEnv = new Envelope();
+                                var holeEnv = new OgrEnvelope();
                                 holeGeom.GetEnvelope(holeEnv);
                                 
                                 // Envelope가 겹치지 않으면 스킵
@@ -3908,7 +4138,7 @@ namespace SpatialCheckPro.Processors
                                 if (isEqual)
                                 {
                                     totalErrors++;
-                                    AddDetailedError(result, "REL_HOLE_DUPLICATE",
+                                    AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_040",
                                         $"홀과 동일한 객체가 존재합니다 (홀 출처: {sourceTable} OID={sourceOid}, 홀 인덱스={holeIdx})",
                                         tableId, oid.ToString(CultureInfo.InvariantCulture), 
                                         $"홀 출처={sourceTable}:{sourceOid}", geom);
@@ -3950,6 +4180,9 @@ namespace SpatialCheckPro.Processors
             // LineConnectivity의 역 검사
             var layer = getLayer(config.MainTableId);
             if (layer == null) return;
+
+            // FieldFilter가 지정되면 그 조건에 맞는 도로중심선만 검사
+            using var _attrFilter = ApplyAttributeFilterIfMatch(layer, fieldFilter);
 
             layer.ResetReading();
             var totalFeatures = layer.GetFeatureCount(1);
@@ -4005,9 +4238,9 @@ namespace SpatialCheckPro.Processors
             foreach (var oid in disconnectedEndpoints)
             {
                 var geom = GetGeometryByOID(layer, oid);
-                AddDetailedError(result, "REL_LINE_DISCONNECTED",
+                AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_027",
                     "도로중심선이 중간에 단절되었습니다",
-                    config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom);
+                    config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName);
                 geom?.Dispose();
             }
 
@@ -4021,6 +4254,27 @@ namespace SpatialCheckPro.Processors
             // LineDisconnection과 동일하지만 속성 필터 적용
             var layer = getLayer(config.MainTableId);
             if (layer == null) return;
+
+            if (string.IsNullOrWhiteSpace(fieldFilter))
+            {
+                _logger.LogWarning("FieldFilter가 지정되지 않아 속성 검사를 수행할 수 없습니다: RuleId={RuleId}", config.RuleId);
+                return;
+            }
+
+            var fieldParts = fieldFilter.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var attributeFieldName = fieldParts.First().Trim();
+            var excludedRoadTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var part in fieldParts.Skip(1))
+            {
+                if (part.StartsWith("exclude_road_types=", StringComparison.OrdinalIgnoreCase))
+                {
+                    var codeList = part.Substring("exclude_road_types=".Length);
+                    foreach (var code in codeList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        excludedRoadTypes.Add(code);
+                    }
+                }
+            }
 
             // 속성별로 그룹화하여 검사
             var segmentsByAttribute = new Dictionary<string, List<(long Oid, double StartX, double StartY, double EndX, double EndY)>>();
@@ -4049,7 +4303,14 @@ namespace SpatialCheckPro.Processors
                     if (geom == null || geom.IsEmpty()) continue;
 
                     var oid = feature.GetFID();
-                    var attrValue = feature.GetFieldAsString(fieldFilter) ?? "UNKNOWN";
+                    var rawValue = feature.GetFieldAsString(attributeFieldName);
+                    var attrValue = string.IsNullOrWhiteSpace(rawValue) ? "UNKNOWN" : rawValue.Trim();
+
+                    if (excludedRoadTypes.Contains(attrValue))
+                    {
+                        _logger.LogDebug("제외 도로구분({Field}={Value})으로 단절 검사 생략: OID={Oid}", attributeFieldName, attrValue, oid);
+                        continue;
+                    }
                     
                     if (!segmentsByAttribute.ContainsKey(attrValue))
                     {
@@ -4087,9 +4348,9 @@ namespace SpatialCheckPro.Processors
                     {
                         totalErrors++;
                         var geom = GetGeometryByOID(layer, oid);
-                        AddDetailedError(result, "REL_LINE_DISCONNECTED_WITH_ATTR",
-                            $"동일 {fieldFilter}({attrValue})를 가진 도로경계선이 단절되었습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"{fieldFilter}={attrValue}", geom);
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_022",
+                            $"동일 {attributeFieldName}({attrValue})를 가진 도로경계선이 단절되었습니다",
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"{fieldFilter}={attrValue}", geom, config.MainTableName);
                         geom?.Dispose();
                     }
                 }
@@ -4209,9 +4470,9 @@ namespace SpatialCheckPro.Processors
 
                     if (!foundMatch)
                     {
-                        AddDetailedError(result, "REL_POLYGON_BOUNDARY_MISMATCH",
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_023",
                             "도로 면형과 경계선이 일치하지 않습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, polyGeom);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, polyGeom, config.MainTableName);
                     }
                 }
             }
@@ -4300,16 +4561,16 @@ namespace SpatialCheckPro.Processors
 
                     if (!startWithin)
                     {
-                        AddDetailedError(result, "REL_LINE_ENDPOINT_OUTSIDE",
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_032",
                             "중심선 시작점이 경계면 내부에 포함되지 않습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", lineGeom);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", startPt, config.MainTableName);
                     }
 
                     if (!endWithin)
                     {
-                        AddDetailedError(result, "REL_LINE_ENDPOINT_OUTSIDE",
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_032",
                             "중심선 끝점이 경계면 내부에 포함되지 않습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", lineGeom);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", endPt, config.MainTableName);
                     }
                 }
             }
@@ -4324,6 +4585,8 @@ namespace SpatialCheckPro.Processors
             var centerlineLayer = getLayer(config.MainTableId); // 중심선
             var boundaryLayer = getLayer(config.RelatedTableId); // 경계면
             if (centerlineLayer == null || boundaryLayer == null) return;
+
+        using var _attrFilter = ApplyAttributeFilterIfMatch(centerlineLayer, fieldFilter);
 
             var boundaryUnion = BuildUnionGeometryWithCache(boundaryLayer, $"{config.RelatedTableId}_UNION");
             if (boundaryUnion == null) return;
@@ -4391,9 +4654,9 @@ namespace SpatialCheckPro.Processors
                     if (!nearBoundary)
                     {
                         var geom = GetGeometryByOID(centerlineLayer, segment.Oid);
-                        AddDetailedError(result, "REL_DEFECTIVE_CONNECTION",
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_015",
                             "중심선 시작점이 다른 중심선에 붙어있지 않고 바운더리 면형에도 붙어있지 않습니다",
-                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom);
+                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName);
                         geom?.Dispose();
                     }
                 }
@@ -4413,9 +4676,9 @@ namespace SpatialCheckPro.Processors
                     if (!nearBoundary)
                     {
                         var geom = GetGeometryByOID(centerlineLayer, segment.Oid);
-                        AddDetailedError(result, "REL_DEFECTIVE_CONNECTION",
+                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_015",
                             "중심선 끝점이 다른 중심선에 붙어있지 않고 바운더리 면형에도 붙어있지 않습니다",
-                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom);
+                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName);
                         geom?.Dispose();
                     }
                 }
@@ -4616,9 +4879,9 @@ namespace SpatialCheckPro.Processors
                     try
                     {
                         // Envelope 기반 사전 필터링
-                        var env1 = new Envelope();
+                        var env1 = new OgrEnvelope();
                         geom1.GetEnvelope(env1);
-                        var env2 = new Envelope();
+                        var env2 = new OgrEnvelope();
                         geom2.GetEnvelope(env2);
                         
                         bool envelopesIntersect = !(env1.MaxX < env2.MinX || env1.MinX > env2.MaxX ||
@@ -4632,17 +4895,38 @@ namespace SpatialCheckPro.Processors
                             if (intersection != null && !intersection.IsEmpty())
                             {
                                 var intersectionType = intersection.GetGeometryType();
-                                // 점이 아닌 교차(선 또는 면)인 경우만 오류
+                                    // 점이 아닌 교차(선 또는 면)인 경우만 오류
                                 if (intersectionType != wkbGeometryType.wkbPoint && 
                                     intersectionType != wkbGeometryType.wkbMultiPoint)
                                 {
                                     errorCount++;
                                     var oid1Str = oid1.ToString(CultureInfo.InvariantCulture);
                                     var oid2Str = oid2.ToString(CultureInfo.InvariantCulture);
-                                    var (x, y) = ExtractCentroid(intersection);
-                                    AddDetailedError(result, "REL_LINE_INTERSECTION_SAME_ATTR",
-                                        $"동일 {attributeField}({attr1})를 가진 선형 객체가 교차함: OID {oid1Str} <-> {oid2Str}",
-                                        config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection);
+                                    
+                                    // 교차 결과가 복합 지오메트리인 경우 분해하여 각각 오류 생성
+                                    var isCollection = intersectionType == wkbGeometryType.wkbGeometryCollection || 
+                                                       intersectionType == wkbGeometryType.wkbMultiLineString;
+
+                                    if (isCollection)
+                                    {
+                                        int count = intersection.GetGeometryCount();
+                                        for (int partIdx = 0; partIdx < count; partIdx++)
+                                        {
+                                            using var subGeom = intersection.GetGeometryRef(partIdx).Clone();
+                                            if (subGeom != null && !subGeom.IsEmpty())
+                                            {
+                                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_038",
+                                                    $"동일 {attributeField}({attr1})를 가진 선형 객체가 교차함 (부분 {partIdx + 1}): OID {oid1Str} <-> {oid2Str}",
+                                                    config.MainTableId, oid1Str, $"교차 객체: {oid2Str} (부분 {partIdx + 1}/{count})", subGeom, config.MainTableName);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_038",
+                                            $"동일 {attributeField}({attr1})를 가진 선형 객체가 교차함: OID {oid1Str} <-> {oid2Str}",
+                                            config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection, config.MainTableName);
+                                    }
                                 }
                             }
                         }
@@ -4765,9 +5049,9 @@ namespace SpatialCheckPro.Processors
                     try
                     {
                         // Envelope 기반 사전 필터링
-                        var env1 = new Envelope();
+                        var env1 = new OgrEnvelope();
                         geom1.GetEnvelope(env1);
-                        var env2 = new Envelope();
+                        var env2 = new OgrEnvelope();
                         geom2.GetEnvelope(env2);
                         
                         bool envelopesIntersect = !(env1.MaxX < env2.MinX || env1.MinX > env2.MaxX ||
@@ -4779,17 +5063,50 @@ namespace SpatialCheckPro.Processors
                         if (intersection != null && !intersection.IsEmpty())
                         {
                             var area = GetSurfaceArea(intersection);
-                            // 겹침 면적이 tolerance를 초과하는 경우만 오류
-                            if (area > tolerance)
-                            {
-                                errorCount++;
-                                var oid1Str = oid1.ToString(CultureInfo.InvariantCulture);
-                                var oid2Str = oid2.ToString(CultureInfo.InvariantCulture);
-                                var (x, y) = ExtractCentroid(intersection);
-                                AddDetailedError(result, "REL_POLYGON_INTERSECTION_SAME_ATTR",
-                                    $"동일 {attributeField}({attr1})를 가진 폴리곤 객체가 교차함 (겹침 면적: {area:F2}㎡): OID {oid1Str} <-> {oid2Str}",
-                                    config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection);
-                            }
+                            
+                            // 허용 오차가 0인 경우 기본값(1e-4) 적용하여 미세 오류 방지
+                            var effectiveTolerance = tolerance > 0 ? tolerance : 1e-4;
+
+                                // 겹침 면적이 effectiveTolerance를 초과하는 경우만 오류
+                                if (area > effectiveTolerance)
+                                {
+                                    errorCount++;
+                                    var oid1Str = oid1.ToString(CultureInfo.InvariantCulture);
+                                    var oid2Str = oid2.ToString(CultureInfo.InvariantCulture);
+                                    
+                                    // 면적 표시 정밀도 조정
+                                    string areaStr = area < 0.01 ? $"{area:F6}" : $"{area:F2}";
+
+                                    // 교차 결과가 복합 지오메트리인 경우 분해하여 각각 오류 생성
+                                    var geomType = intersection.GetGeometryType();
+                                    var isCollection = geomType == wkbGeometryType.wkbGeometryCollection || 
+                                                       geomType == wkbGeometryType.wkbMultiPolygon;
+
+                                    if (isCollection)
+                                    {
+                                        int count = intersection.GetGeometryCount();
+                                        for (int partIdx = 0; partIdx < count; partIdx++)
+                                        {
+                                            using var subGeom = intersection.GetGeometryRef(partIdx).Clone();
+                                            if (subGeom != null && !subGeom.IsEmpty())
+                                            {
+                                                var subArea = GetSurfaceArea(subGeom);
+                                                if (subArea > 0) // 미세 조각 제외 가능
+                                                {
+                                                    AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_037",
+                                                        $"동일 {attributeField}({attr1})를 가진 폴리곤 객체가 교차함 (부분 {partIdx + 1}, 면적: {subArea:F2}㎡): OID {oid1Str} <-> {oid2Str}",
+                                                        config.MainTableId, oid1Str, $"교차 객체: {oid2Str} (부분 {partIdx + 1}/{count})", subGeom, config.MainTableName);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_037",
+                                            $"동일 {attributeField}({attr1})를 가진 폴리곤 객체가 교차함 (겹침 면적: {areaStr}㎡): OID {oid1Str} <-> {oid2Str}",
+                                            config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection, config.MainTableName);
+                                    }
+                                }
                         }
                     }
                     catch (Exception ex)
@@ -4984,9 +5301,9 @@ namespace SpatialCheckPro.Processors
                                     var roadOidStr = roadOid.ToString(CultureInfo.InvariantCulture);
                                     var facilityOidStr = facilityOid.ToString(CultureInfo.InvariantCulture);
                                     var (x, y) = ExtractCentroid(facilityGeom);
-                                    AddDetailedError(result, "REL_ATTRIBUTE_SPATIAL_MISMATCH",
+                                    AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_003",
                                         $"도로({roadField}={roadAttr})에 도로시설 레이어가 중첩되나 {facilityField} 속성이 없음: OID {facilityOidStr}",
-                                        config.RelatedTableId, facilityOidStr, $"도로 OID: {roadOidStr}", facilityGeom);
+                                        config.RelatedTableId, facilityOidStr, $"도로 OID: {roadOidStr}", facilityGeom, config.RelatedTableName);
                                 }
                             }
                         }
@@ -5277,9 +5594,9 @@ namespace SpatialCheckPro.Processors
                                     var pointGeom = new Geometry(wkbGeometryType.wkbPoint);
                                     pointGeom.AddPoint((x1 + x2) / 2.0, (y1 + y2) / 2.0, 0); // 두 점의 중점 사용
                                     
-                                    AddDetailedError(result, "REL_POINT_SPACING_VIOLATION",
+                                    AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_039",
                                         $"표고점 간 거리가 최소 간격({requiredSpacing}m, {locationType}) 미만: OID {oid1Str} <-> {oid2Str} (거리: {distance:F2}m)",
-                                        config.MainTableId, oid1Str, $"인접 표고점: {oid2Str}", pointGeom);
+                                        config.MainTableId, oid1Str, $"인접 표고점: {oid2Str}", pointGeom, config.MainTableName);
                                 }
                             }
                             catch (Exception ex)
@@ -5331,7 +5648,7 @@ namespace SpatialCheckPro.Processors
                     if (sidewalkPoly != null && !sidewalkPoly.IsEmpty())
                     {
                         // Envelope 기반 사전 필터링 (성능 최적화)
-                        var env = new Envelope();
+                        var env = new OgrEnvelope();
                         sidewalkPoly.GetEnvelope(env);
                         if (x >= env.MinX && x <= env.MaxX && y >= env.MinY && y <= env.MaxY)
                         {
@@ -5352,7 +5669,7 @@ namespace SpatialCheckPro.Processors
                     if (roadPoly != null && !roadPoly.IsEmpty())
                     {
                         // Envelope 기반 사전 필터링 (성능 최적화)
-                        var env = new Envelope();
+                        var env = new OgrEnvelope();
                         roadPoly.GetEnvelope(env);
                         if (x >= env.MinX && x <= env.MaxX && y >= env.MinY && y <= env.MaxY)
                         {
@@ -5388,10 +5705,42 @@ namespace SpatialCheckPro.Processors
         {
             if (!_disposed)
             {
-                ClearUnionCache();
+                ClearCache();
                 _disposed = true;
                 _logger.LogInformation("RelationCheckProcessor 리소스 정리 완료");
             }
+        }
+
+        /// <summary>
+        /// 캐시된 지오메트리를 명시적으로 해제합니다
+        /// </summary>
+        public void ClearCache()
+        {
+            foreach (var geometry in _unionGeometryCache.Values)
+            {
+                geometry?.Dispose();
+            }
+            _unionGeometryCache.Clear();
+            _cacheTimestamps.Clear();
+
+            foreach (var cacheEntry in _polygonIndexCache.Values)
+            {
+                cacheEntry.Dispose();
+            }
+            _polygonIndexCache.Clear();
+            _polygonIndexCacheTimestamps.Clear();
+            
+            // Strategies 정리
+            foreach (var strategy in _strategies.Values)
+            {
+                if (strategy is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
+            // _strategies는 readonly이므로 Clear하지 않음 (생성자에서 초기화됨)
+            
+            _logger.LogDebug("RelationCheckProcessor 캐시 정리 완료");
         }
     }
 }

@@ -32,22 +32,12 @@ namespace SpatialCheckPro.GUI.Views
         public bool EnableRealTimeMonitoring { get; set; } = false;
         public int MonitoringIntervalSeconds { get; set; } = 5;
 
-        // 수동 스트리밍 모드 설정
-        public bool ForceStreamingMode { get; set; } = false;
-        public int CustomBatchSize { get; set; } = 1000;
-        public int MaxMemoryUsageMB { get; set; } = 512;
-        public bool EnablePrefetching { get; set; } = false;
-        public bool EnableParallelStreaming { get; set; } = false;
-
         // private CentralizedResourceMonitor? _resourceMonitor;
         // private ParallelPerformanceMonitor? _performanceMonitor;
         // private PerformanceBenchmarkService? _benchmarkService;
         // private ILogger<ValidationSettingsView>? _logger;
         // private System.Windows.Threading.DispatcherTimer? _monitoringTimer;
         // private BenchmarkResult? _lastBenchmarkResult;
-
-        // 설정 변경 이벤트
-        // public event EventHandler<PerformanceSettingsChangedEventArgs>? PerformanceSettingsChanged;
 
         public ValidationSettingsView()
         {
@@ -78,8 +68,6 @@ namespace SpatialCheckPro.GUI.Views
                 
                 // 시스템 리소스 분석 초기화
 
-                // 수동 스트리밍 모드 UI 초기화
-                InitializeManualStreamingModeUI();
                 // InitializeSystemResourceAnalyzer();
                 // _ = LoadSystemResourceStatusAsync();
                 // InitializeRealTimeMonitoring();
@@ -667,8 +655,7 @@ namespace SpatialCheckPro.GUI.Views
                     var d = (r.Item.FieldName ?? string.Empty).ToLowerInvariant();
                     var e = (r.Item.CheckType ?? string.Empty).ToLowerInvariant();
                     var f = (r.Item.Parameters ?? string.Empty).ToLowerInvariant();
-                    var g = (r.Item.Severity ?? string.Empty).ToLowerInvariant();
-                    return MatchAll(a) || MatchAll(b) || MatchAll(c) || MatchAll(d) || MatchAll(e) || MatchAll(f) || MatchAll(g);
+                    return MatchAll(a) || MatchAll(b) || MatchAll(c) || MatchAll(d) || MatchAll(e) || MatchAll(f);
                 }));
             Stage4Grid.ItemsSource = filtered;
         }
@@ -853,11 +840,6 @@ namespace SpatialCheckPro.GUI.Views
                     MaxParallelismTextBox.Text = resourceInfo.RecommendedMaxParallelism.ToString();
                 }
                 
-                if (BatchSizeTextBox.Text == "1000") // 기본값인 경우에만 자동 적용
-                {
-                    BatchSizeTextBox.Text = resourceInfo.RecommendedBatchSize.ToString();
-                }
-                
                 // 시스템 부하가 높은 경우 병렬 처리 비활성화 권장
                 if (resourceInfo.SystemLoadLevel == SystemLoadLevel.High)
                 {
@@ -990,11 +972,6 @@ namespace SpatialCheckPro.GUI.Views
                     MaxParallelism = Math.Max(1, Math.Min(maxParallelism, Environment.ProcessorCount * 2));
                 }
                 
-                if (int.TryParse(BatchSizeTextBox.Text, out var batchSize))
-                {
-                    BatchSize = Math.Max(100, Math.Min(batchSize, 50000));
-                }
-
                 EnableRealTimeMonitoring = EnableRealTimeMonitoringCheck.IsChecked ?? false;
                 
                 if (int.TryParse(MonitoringIntervalTextBox.Text, out var interval))
@@ -1004,35 +981,10 @@ namespace SpatialCheckPro.GUI.Views
 
                 _logger?.LogInformation("설정 저장 완료: 병렬처리={ParallelProcessing}, 병렬도={Parallelism}, 배치크기={BatchSize}", 
                     EnableParallelProcessing, MaxParallelism, BatchSize);
-                
-                // 설정 변경 이벤트 발생
-                NotifySettingsChanged();
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"설정 저장 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        /// <summary>
-        /// 설정 변경 시 이벤트 발생
-        /// </summary>
-        private void NotifySettingsChanged()
-        {
-            try
-            {
-                PerformanceSettingsChanged?.Invoke(this, new PerformanceSettingsChangedEventArgs
-                {
-                    EnableParallelProcessing = EnableParallelProcessing,
-                    MaxParallelism = MaxParallelism,
-                    BatchSize = BatchSize,
-                    EnableRealTimeMonitoring = EnableRealTimeMonitoring,
-                    MonitoringIntervalSeconds = MonitoringIntervalSeconds
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "설정 변경 이벤트 발생 실패");
             }
         }
 
@@ -1342,101 +1294,6 @@ namespace SpatialCheckPro.GUI.Views
             }
         }
         */
-    }
-
-    /// <summary>
-    /// 성능 설정 변경 이벤트 인수
-    /// </summary>
-    public class PerformanceSettingsChangedEventArgs : EventArgs
-    {
-        public bool EnableParallelProcessing { get; set; }
-        public int MaxParallelism { get; set; }
-        public int BatchSize { get; set; }
-        public bool EnableRealTimeMonitoring { get; set; }
-        public int MonitoringIntervalSeconds { get; set; }
-    }
-}
-
-namespace SpatialCheckPro.GUI.Views
-{
-    public partial class ValidationSettingsView : UserControl
-    {
-        /// <summary>
-        /// 수동 스트리밍 모드 UI 초기화
-        /// </summary>
-    private void InitializeManualStreamingModeUI()
-    {
-        // UI 컨트롤 값 설정
-        ForceStreamingModeCheck.IsChecked = ForceStreamingMode;
-        BatchSizeTextBox.Text = CustomBatchSize.ToString();
-        MemoryUsageTextBox.Text = MaxMemoryUsageMB.ToString();
-        EnablePrefetchingCheck.IsChecked = EnablePrefetching;
-        EnableParallelStreamingCheck.IsChecked = EnableParallelStreaming;
-
-        // 이벤트 핸들러 연결
-        ForceStreamingModeCheck.Checked += (s, e) => ForceStreamingMode = true;
-        ForceStreamingModeCheck.Unchecked += (s, e) => ForceStreamingMode = false;
-
-        BatchSizeTextBox.TextChanged += BatchSizeTextBox_TextChanged;
-        MemoryUsageTextBox.TextChanged += MemoryUsageTextBox_TextChanged;
-
-        EnablePrefetchingCheck.Checked += (s, e) => EnablePrefetching = true;
-        EnablePrefetchingCheck.Unchecked += (s, e) => EnablePrefetching = false;
-
-        EnableParallelStreamingCheck.Checked += (s, e) => EnableParallelStreaming = true;
-        EnableParallelStreamingCheck.Unchecked += (s, e) => EnableParallelStreaming = false;
-    }
-
-    /// <summary>
-    /// 배치 크기 텍스트박스 변경 이벤트
-    /// </summary>
-    private void BatchSizeTextBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (int.TryParse(BatchSizeTextBox.Text, out int value))
-        {
-            CustomBatchSize = Math.Max(100, Math.Min(10000, value));
-            BatchSizeTextBox.Text = CustomBatchSize.ToString();
-        }
-        else
-        {
-            BatchSizeTextBox.Text = CustomBatchSize.ToString();
-        }
-    }
-
-    /// <summary>
-    /// 메모리 사용량 텍스트박스 변경 이벤트
-    /// </summary>
-    private void MemoryUsageTextBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (int.TryParse(MemoryUsageTextBox.Text, out int value))
-        {
-            MaxMemoryUsageMB = Math.Max(128, Math.Min(4096, value));
-            MemoryUsageTextBox.Text = MaxMemoryUsageMB.ToString();
-        }
-        else
-        {
-            MemoryUsageTextBox.Text = MaxMemoryUsageMB.ToString();
-        }
-    }
-
-    /// <summary>
-    /// 수동 스트리밍 모드 설정을 PerformanceSettings로 변환
-    /// </summary>
-    public PerformanceSettings ToPerformanceSettings()
-    {
-        return new PerformanceSettings
-        {
-            ForceStreamingMode = ForceStreamingMode,
-            CustomBatchSize = CustomBatchSize,
-            MaxMemoryUsageMB = MaxMemoryUsageMB,
-            EnablePrefetching = EnablePrefetching,
-            EnableParallelStreaming = EnableParallelStreaming,
-            EnableDynamicParallelismAdjustment = true,
-            MaxDegreeOfParallelism = MaxParallelism,
-            ResourceMonitoringIntervalSeconds = MonitoringIntervalSeconds,
-            EnableTableParallelProcessing = EnableParallelProcessing
-        };
-    }
 
     /// <summary>
     /// FileGDB 폴더가 유효한지 기본 검증

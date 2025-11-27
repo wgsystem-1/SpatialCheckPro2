@@ -40,6 +40,7 @@ namespace SpatialCheckPro.GUI.Views
     /// </summary>
     public class AttributeRelationErrorItem
     {
+        public string TableId { get; set; } = string.Empty;
         public string TableName { get; set; } = string.Empty;
         public string FieldName { get; set; } = string.Empty;
         public string RuleName { get; set; } = string.Empty;
@@ -54,6 +55,8 @@ namespace SpatialCheckPro.GUI.Views
     /// </summary>
     public class SpatialRelationErrorItem
     {
+        public string TableId { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
         public string SourceLayer { get; set; } = string.Empty;
         public string RelationType { get; set; } = string.Empty;
         public string ErrorType { get; set; } = string.Empty;
@@ -106,6 +109,7 @@ namespace SpatialCheckPro.GUI.Views
     public class ValidationResultItem
     {
         public string Stage { get; set; } = string.Empty;
+        public string TableId { get; set; } = string.Empty;
         public string TableName { get; set; } = string.Empty;
         public string ErrorType { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
@@ -123,6 +127,44 @@ namespace SpatialCheckPro.GUI.Views
         private readonly ILogger<ValidationResultView> _logger;
         private ICollectionView? _resultsView;
         private System.Timers.Timer? _filterDebounceTimer;
+
+        private Dictionary<string, string> BuildTableNameLookup()
+        {
+            var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (_validationResult?.TableCheckResult?.TableResults != null)
+            {
+                foreach (var table in _validationResult.TableCheckResult.TableResults)
+                {
+                    if (string.IsNullOrWhiteSpace(table.TableId))
+                    {
+                        continue;
+                    }
+
+                    if (!lookup.ContainsKey(table.TableId))
+                    {
+                        lookup[table.TableId] = table.TableName ?? string.Empty;
+                    }
+                }
+            }
+
+            return lookup;
+        }
+
+        private static string ResolveTableName(Dictionary<string, string> lookup, string? tableId, string? existingName)
+        {
+            if (!string.IsNullOrWhiteSpace(existingName))
+            {
+                return existingName!;
+            }
+
+            if (!string.IsNullOrWhiteSpace(tableId) && lookup.TryGetValue(tableId, out var mappedName) && !string.IsNullOrWhiteSpace(mappedName))
+            {
+                return mappedName!;
+            }
+
+            return string.Empty;
+        }
 
         // 보고서 생성 요청 이벤트 사용처가 없어 제거하여 경고 방지
 
@@ -191,20 +233,23 @@ namespace SpatialCheckPro.GUI.Views
             var tableQuery = (TableFilterSearchBox?.Text ?? string.Empty).Trim();
             if (!string.IsNullOrEmpty(inc))
             {
-                var hit = (item.Stage + " " + item.TableName + " " + item.ErrorType + " " + item.Message).IndexOf(inc, StringComparison.OrdinalIgnoreCase) >= 0;
+                var hit = (item.Stage + " " + item.TableId + " " + item.TableName + " " + item.ErrorType + " " + item.Message)
+                    .IndexOf(inc, StringComparison.OrdinalIgnoreCase) >= 0;
                 if (!hit) return false;
             }
             if (!string.IsNullOrEmpty(exc))
             {
-                var hit = (item.Stage + " " + item.TableName + " " + item.ErrorType + " " + item.Message).IndexOf(exc, StringComparison.OrdinalIgnoreCase) >= 0;
+                var hit = (item.Stage + " " + item.TableId + " " + item.TableName + " " + item.ErrorType + " " + item.Message)
+                    .IndexOf(exc, StringComparison.OrdinalIgnoreCase) >= 0;
                 if (hit) return false;
             }
 
             // 테이블 이름 필터 (검색창 기반)
             if (!string.IsNullOrEmpty(tableQuery))
             {
-                if (item.TableName?.IndexOf(tableQuery, StringComparison.OrdinalIgnoreCase) < 0)
-                    return false;
+                var hit = item.TableId.IndexOf(tableQuery, StringComparison.OrdinalIgnoreCase) >= 0
+                    || item.TableName.IndexOf(tableQuery, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!hit) return false;
             }
 
             // 단계 체크
@@ -313,6 +358,7 @@ namespace SpatialCheckPro.GUI.Views
             // 와이드 대시보드 업데이트
             _wideDashboard?.SetValidationResult(result);
             
+            UpdateFileHeader();
             UpdateUI();
         }
 
@@ -630,6 +676,8 @@ namespace SpatialCheckPro.GUI.Views
                 _logger?.LogInformation("검수 결과 UI 업데이트 시작: ValidationId={ValidationId}, ErrorCount={ErrorCount}, WarningCount={WarningCount}", 
                     _validationResult.ValidationId, _validationResult.ErrorCount, _validationResult.WarningCount);
 
+                UpdateFileHeader();
+
                 // 기존 대시보드 UI 요소들이 제거되어 주석 처리
                 // ValidationStatusText, ElapsedTimeText, ErrorCountText, WarningCountText는 와이드 대시보드에서 처리
                 
@@ -663,10 +711,61 @@ namespace SpatialCheckPro.GUI.Views
                 if (BatchResultSelector?.SelectedValue is int idx && idx >= 0 && idx < _batchResults.Count)
                 {
                     _validationResult = _batchResults[idx];
+                    UpdateFileHeader();
                     UpdateUI();
                 }
             }
             catch { }
+        }
+
+        private void UpdateFileHeader()
+        {
+            if (_validationResult == null)
+            {
+                CurrentResultFileNameText.Visibility = Visibility.Collapsed;
+                CurrentResultFilePathText.Visibility = Visibility.Collapsed;
+                CurrentResultBadge.Visibility = Visibility.Collapsed;
+                CurrentResultBadgeText.Text = string.Empty;
+                return;
+            }
+
+            var targetFile = _validationResult.TargetFile ?? string.Empty;
+            var fileName = string.IsNullOrWhiteSpace(targetFile) ? string.Empty : Path.GetFileName(targetFile);
+            CurrentResultFileNameText.Text = string.IsNullOrWhiteSpace(fileName) ? "파일 미지정" : fileName;
+            CurrentResultFileNameText.ToolTip = targetFile;
+            CurrentResultFileNameText.Visibility = Visibility.Visible;
+
+            var directory = string.IsNullOrWhiteSpace(targetFile) ? string.Empty : Path.GetDirectoryName(targetFile);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                CurrentResultFilePathText.Text = directory;
+                CurrentResultFilePathText.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                CurrentResultFilePathText.Visibility = Visibility.Collapsed;
+                CurrentResultFilePathText.Text = string.Empty;
+            }
+
+            if (_batchResults != null && _batchResults.Count > 1)
+            {
+                var index = _batchResults.IndexOf(_validationResult);
+                if (index >= 0)
+                {
+                    CurrentResultBadge.Visibility = Visibility.Visible;
+                    CurrentResultBadgeText.Text = $"{index + 1}/{_batchResults.Count}";
+                }
+                else
+                {
+                    CurrentResultBadge.Visibility = Visibility.Collapsed;
+                    CurrentResultBadgeText.Text = string.Empty;
+                }
+            }
+            else
+            {
+                CurrentResultBadge.Visibility = Visibility.Collapsed;
+                CurrentResultBadgeText.Text = string.Empty;
+            }
         }
 
         /// <summary>
@@ -678,6 +777,8 @@ namespace SpatialCheckPro.GUI.Views
 
             try
             {
+                var tableNameLookup = BuildTableNameLookup();
+
                 // 1단계: 테이블 검수 결과 탭
                 if (_validationResult.TableCheckResult?.TableResults != null)
                 {
@@ -687,6 +788,11 @@ namespace SpatialCheckPro.GUI.Views
                 // 2단계: 스키마 검수 결과 탭
                 if (_validationResult.SchemaCheckResult?.SchemaResults != null)
                 {
+                    foreach (var schemaResult in _validationResult.SchemaCheckResult.SchemaResults)
+                    {
+                        schemaResult.TableName = ResolveTableName(tableNameLookup, schemaResult.TableId, schemaResult.TableName);
+                    }
+
                     SchemaResultsGrid.ItemsSource = _validationResult.SchemaCheckResult.SchemaResults;
                     _logger.LogInformation("2단계 스키마 검수 결과 표시: {Count}개 항목", _validationResult.SchemaCheckResult.SchemaResults.Count);
                     
@@ -712,6 +818,11 @@ namespace SpatialCheckPro.GUI.Views
                 // 3단계: 지오메트리 검수 결과 탭
                 if (_validationResult.GeometryCheckResult?.GeometryResults != null)
                 {
+                    foreach (var geometryResult in _validationResult.GeometryCheckResult.GeometryResults)
+                    {
+                        geometryResult.TableName = ResolveTableName(tableNameLookup, geometryResult.TableId, geometryResult.TableName);
+                    }
+
                     GeometryResultsGrid.ItemsSource = _validationResult.GeometryCheckResult.GeometryResults;
                 }
 
@@ -742,7 +853,8 @@ namespace SpatialCheckPro.GUI.Views
                             .Where(w => w.ErrorType != SpatialCheckPro.Models.Enums.ErrorType.Relation) // REL_ 오류 제외
                             .Select(w => new AttributeRelationErrorItem
                             {
-                                TableName = string.IsNullOrWhiteSpace(w.TableName) ? (w.SourceTable ?? string.Empty) : w.TableName,
+                                TableId = !string.IsNullOrWhiteSpace(w.TableId) ? w.TableId : (w.SourceTable ?? string.Empty),
+                                TableName = ResolveTableName(tableNameLookup, w.TableId ?? w.SourceTable, w.TableName),
                             FieldName = !string.IsNullOrWhiteSpace(w.FieldName) ? w.FieldName : (w.Metadata != null && w.Metadata.TryGetValue("FieldName", out var fn) ? Convert.ToString(fn) ?? string.Empty : string.Empty),
                             RuleName = string.IsNullOrWhiteSpace(w.ErrorCode) ? (w.Metadata != null && w.Metadata.TryGetValue("RuleName", out var rn) ? Convert.ToString(rn) ?? "ATTRIBUTE_CHECK" : "ATTRIBUTE_CHECK") : w.ErrorCode,
                                 ObjectId = w.FeatureId ?? (w.SourceObjectId?.ToString() ?? string.Empty),
@@ -889,6 +1001,7 @@ namespace SpatialCheckPro.GUI.Views
         {
             try
             {
+                var tableNameLookup = BuildTableNameLookup();
                 var errors = relationCheckResult.Errors ?? new List<SpatialCheckPro.Models.ValidationError>();
 
                 // AttributeRelationCheckResult에서 ErrorType.Relation 오류 병합 (Stage 5에 표시)
@@ -979,43 +1092,28 @@ namespace SpatialCheckPro.GUI.Views
                     _logger?.LogWarning(ex, "규칙 수 표시 중 오류 발생");
                 }
 
-                // 공간 관계 오류: ErrorCode가 "REL_"로 시작하지만 "REL_CENTERLINE_ATTR_MISMATCH"는 제외 (속성 불일치는 속성 관계로 분류)
+                // 공간 관계 오류: 모든 항목 표시 (RuleID 표준화로 인해 REL_ 접두사 제거됨)
                 var spatialItems = errors
-                    .Where(e => !string.IsNullOrWhiteSpace(e.ErrorCode) 
-                        && e.ErrorCode.StartsWith("REL_", StringComparison.OrdinalIgnoreCase)
-                        && !e.ErrorCode.Equals("REL_CENTERLINE_ATTR_MISMATCH", StringComparison.OrdinalIgnoreCase))
-                    .Select(e => new SpatialRelationErrorItem
+                    .Select(e =>
                     {
-                        SourceLayer = string.IsNullOrWhiteSpace(e.TableName) ? (e.SourceTable ?? string.Empty) : e.TableName,
-                        RelationType = e.Metadata != null && e.Metadata.TryGetValue("RelationType", out var rt) ? Convert.ToString(rt) ?? string.Empty : string.Empty,
-                        ErrorType = e.ErrorCode ?? string.Empty,
-                        SourceObjectId = !string.IsNullOrWhiteSpace(e.FeatureId) ? e.FeatureId : (e.SourceObjectId?.ToString() ?? string.Empty),
-                        Message = e.Message
+                        var tableId = !string.IsNullOrWhiteSpace(e.TableId) ? e.TableId : (e.SourceTable ?? string.Empty);
+                        var tableName = ResolveTableName(tableNameLookup, e.TableId ?? e.SourceTable, e.TableName);
+
+                        return new SpatialRelationErrorItem
+                        {
+                            TableId = tableId,
+                            TableName = tableName,
+                            SourceLayer = string.IsNullOrWhiteSpace(tableName) ? tableId : tableName,
+                            RelationType = e.Metadata != null && e.Metadata.TryGetValue("RelationType", out var rt) ? Convert.ToString(rt) ?? string.Empty : string.Empty,
+                            ErrorType = e.ErrorCode ?? string.Empty,
+                            SourceObjectId = !string.IsNullOrWhiteSpace(e.FeatureId) ? e.FeatureId : (e.SourceObjectId?.ToString() ?? string.Empty),
+                            Message = e.Message
+                        };
                     })
                     .ToList();
 
                 SpatialRelationErrorsGrid.ItemsSource = spatialItems;
                 SpatialErrorCountText.Text = spatialItems.Count.ToString();
-
-                // 속성 관계 오류: REL_CENTERLINE_ATTR_MISMATCH 포함 (속성 불일치는 속성 관계로 분류)
-                var attrItems = errors
-                    .Where(e => string.IsNullOrWhiteSpace(e.ErrorCode) 
-                        || !e.ErrorCode.StartsWith("REL_", StringComparison.OrdinalIgnoreCase)
-                        || e.ErrorCode.Equals("REL_CENTERLINE_ATTR_MISMATCH", StringComparison.OrdinalIgnoreCase))
-                    .Select(e => new AttributeRelationErrorItem
-                    {
-                        TableName = string.IsNullOrWhiteSpace(e.TableName) ? (e.SourceTable ?? string.Empty) : e.TableName,
-                        FieldName = e.Metadata != null && e.Metadata.TryGetValue("FieldName", out var fn) ? Convert.ToString(fn) ?? string.Empty : (e.FieldName ?? string.Empty),
-                        RuleName = string.IsNullOrWhiteSpace(e.ErrorCode) ? (e.Metadata != null && e.Metadata.TryGetValue("RuleName", out var rn) ? Convert.ToString(rn) ?? "ATTRIBUTE_CHECK" : "ATTRIBUTE_CHECK") : e.ErrorCode,
-                        ObjectId = !string.IsNullOrWhiteSpace(e.FeatureId) ? e.FeatureId : (e.SourceObjectId?.ToString() ?? string.Empty),
-                        ExpectedValue = e.Metadata != null && e.Metadata.TryGetValue("Expected", out var exv) ? Convert.ToString(exv) ?? string.Empty : string.Empty,
-                        ActualValue = e.Metadata != null && e.Metadata.TryGetValue("Actual", out var acv) ? Convert.ToString(acv) ?? string.Empty : string.Empty,
-                        Message = e.Message
-                    })
-                    .ToList();
-
-                AttributeRelationErrorsGrid.ItemsSource = attrItems;
-                AttributeErrorCountText.Text = attrItems.Count.ToString();
             }
             catch (Exception ex)
             {
@@ -1033,6 +1131,7 @@ namespace SpatialCheckPro.GUI.Views
             try
             {
                 _logger?.LogInformation("검수 결과 항목 생성 시작: ValidationId={ValidationId}", result.ValidationId);
+                var tableNameLookup = BuildTableNameLookup();
 
                 // 1단계: 테이블 검수 결과 처리
                 if (result.TableCheckResult?.TableResults != null)
@@ -1047,7 +1146,8 @@ namespace SpatialCheckPro.GUI.Views
                             items.Add(new ValidationResultItem
                             {
                                 Stage = "1단계",
-                                TableName = tableResult.TableName ?? tableResult.TableId,
+                                TableId = tableResult.TableId,
+                                TableName = ResolveTableName(tableNameLookup, tableResult.TableId, tableResult.TableName),
                                 ErrorType = "테이블 검수",
                                 Message = $"테이블 '{tableResult.TableId}'이 존재하지 않습니다"
                             });
@@ -1060,7 +1160,8 @@ namespace SpatialCheckPro.GUI.Views
                                 items.Add(new ValidationResultItem
                                 {
                                     Stage = "1단계",
-                                    TableName = tableResult.TableName ?? tableResult.TableId,
+                                    TableId = tableResult.TableId,
+                                    TableName = ResolveTableName(tableNameLookup, tableResult.TableId, tableResult.TableName),
                                     ErrorType = "테이블 검수",
                                     Message = $"정의되지 않은 테이블: '{tableResult.TableId}' ({tableResult.ActualFeatureType}, {tableResult.FeatureCount}개 피처)"
                                 });
@@ -1070,7 +1171,8 @@ namespace SpatialCheckPro.GUI.Views
                                 items.Add(new ValidationResultItem
                                 {
                                     Stage = "1단계",
-                                    TableName = tableResult.TableName ?? tableResult.TableId,
+                                    TableId = tableResult.TableId,
+                                    TableName = ResolveTableName(tableNameLookup, tableResult.TableId, tableResult.TableName),
                                     ErrorType = "테이블 검수",
                                     Message = $"지오메트리 타입 불일치: 예상 '{tableResult.ExpectedFeatureType}', 실제 '{tableResult.ActualFeatureType}'"
                                 });
@@ -1083,7 +1185,8 @@ namespace SpatialCheckPro.GUI.Views
                             items.Add(new ValidationResultItem
                             {
                                 Stage = "1단계",
-                                TableName = tableResult.TableName ?? tableResult.TableId,
+                                TableId = tableResult.TableId,
+                                TableName = ResolveTableName(tableNameLookup, tableResult.TableId, tableResult.TableName),
                                 ErrorType = "테이블 검수",
                                 Message = error
                             });
@@ -1094,7 +1197,8 @@ namespace SpatialCheckPro.GUI.Views
                             items.Add(new ValidationResultItem
                             {
                                 Stage = "1단계",
-                                TableName = tableResult.TableName ?? tableResult.TableId,
+                                TableId = tableResult.TableId,
+                                TableName = ResolveTableName(tableNameLookup, tableResult.TableId, tableResult.TableName),
                                 ErrorType = "테이블 검수",
                                 Message = warning
                             });
@@ -1115,6 +1219,8 @@ namespace SpatialCheckPro.GUI.Views
                     
                     foreach (var schemaResult in result.SchemaCheckResult.SchemaResults)
                     {
+                        var resolvedTableName = ResolveTableName(tableNameLookup, schemaResult.TableId, schemaResult.TableName);
+
                         // 실패한 경우 상세한 원인 분석
                         if (!schemaResult.IsValid || schemaResult.DuplicateValueCount > 0 || 
                             schemaResult.InvalidDomainValueCount > 0 || schemaResult.OrphanRecordCount > 0)
@@ -1225,7 +1331,8 @@ namespace SpatialCheckPro.GUI.Views
                                 items.Add(new ValidationResultItem
                                 {
                                     Stage = "2단계",
-                                    TableName = schemaResult.TableId,
+                                    TableId = schemaResult.TableId,
+                                    TableName = resolvedTableName,
                                     ErrorType = "스키마 검수",
                                     Message = $"컬럼 '{schemaResult.ColumnName}': {errorMessage}"
                                 });
@@ -1238,7 +1345,8 @@ namespace SpatialCheckPro.GUI.Views
                             items.Add(new ValidationResultItem
                             {
                                 Stage = "2단계",
-                                TableName = schemaResult.TableId,
+                                TableId = schemaResult.TableId,
+                                TableName = resolvedTableName,
                                 ErrorType = "스키마 검수",
                                 Message = $"컬럼 '{schemaResult.ColumnName}': {error}"
                             });
@@ -1250,7 +1358,8 @@ namespace SpatialCheckPro.GUI.Views
                             items.Add(new ValidationResultItem
                             {
                                 Stage = "2단계",
-                                TableName = schemaResult.TableId,
+                                TableId = schemaResult.TableId,
+                                TableName = resolvedTableName,
                                 ErrorType = "스키마 검수",
                                 Message = $"컬럼 '{schemaResult.ColumnName}': {warning}"
                             });
@@ -1273,12 +1382,14 @@ namespace SpatialCheckPro.GUI.Views
                     {
                         foreach (var geometryResult in result.GeometryCheckResult.GeometryResults)
                         {
+                            var resolvedTableName = ResolveTableName(tableNameLookup, geometryResult.TableId, geometryResult.TableName);
                             if (geometryResult.HasError)
                             {
                                 items.Add(new ValidationResultItem
                                 {
                                     Stage = "3단계",
-                                    TableName = geometryResult.TableName ?? geometryResult.TableId,
+                                    TableId = geometryResult.TableId,
+                                    TableName = resolvedTableName,
                                     ErrorType = "지오메트리 오류",
                                     Message = geometryResult.ErrorTypesSummary
                                 });
@@ -1301,22 +1412,30 @@ namespace SpatialCheckPro.GUI.Views
                     
                     foreach (var e in result.AttributeRelationCheckResult.Errors)
                     {
+                        var tableId = !string.IsNullOrWhiteSpace(e.TableId) ? e.TableId : (e.SourceTable ?? string.Empty);
+                        var tableName = ResolveTableName(tableNameLookup, e.TableId ?? e.SourceTable, e.TableName);
+
                         items.Add(new ValidationResultItem
                         {
                             Stage = "4단계",
-                            TableName = string.IsNullOrWhiteSpace(e.TableName) ? "전체" : e.TableName,
-                            ErrorType = "속성 관계 오류",
+                            TableId = tableId,
+                            TableName = tableName,
+                            ErrorType = !string.IsNullOrWhiteSpace(e.ErrorCode) ? e.ErrorCode : "속성 관계 오류",
                             Message = e.Message
                         });
                     }
 
                     foreach (var w in result.AttributeRelationCheckResult.Warnings)
                     {
+                        var tableId = !string.IsNullOrWhiteSpace(w.TableId) ? w.TableId : (w.SourceTable ?? string.Empty);
+                        var tableName = ResolveTableName(tableNameLookup, w.TableId ?? w.SourceTable, w.TableName);
+
                         items.Add(new ValidationResultItem
                         {
                             Stage = "4단계",
-                            TableName = string.IsNullOrWhiteSpace(w.TableName) ? "전체" : w.TableName,
-                            ErrorType = "속성 관계 경고",
+                            TableId = tableId,
+                            TableName = tableName,
+                            ErrorType = !string.IsNullOrWhiteSpace(w.ErrorCode) ? w.ErrorCode : "속성 관계 경고",
                             Message = w.Message
                         });
                     }
@@ -1336,21 +1455,29 @@ namespace SpatialCheckPro.GUI.Views
                     
                     foreach (var error in result.RelationCheckResult.Errors)
                     {
+                        var tableId = !string.IsNullOrWhiteSpace(error.TableId) ? error.TableId : (error.SourceTable ?? string.Empty);
+                        var tableName = ResolveTableName(tableNameLookup, error.TableId ?? error.SourceTable, error.TableName);
+
                         items.Add(new ValidationResultItem
                         {
                             Stage = "5단계",
-                            TableName = string.IsNullOrWhiteSpace(error.TableName) ? "전체" : error.TableName,
-                            ErrorType = "공간 관계 오류",
+                            TableId = tableId,
+                            TableName = tableName,
+                            ErrorType = !string.IsNullOrWhiteSpace(error.ErrorCode) ? error.ErrorCode : "공간 관계 오류",
                             Message = error.Message
                         });
                     }
                     foreach (var warning in result.RelationCheckResult.Warnings)
                     {
+                        var tableId = !string.IsNullOrWhiteSpace(warning.TableId) ? warning.TableId : (warning.SourceTable ?? string.Empty);
+                        var tableName = ResolveTableName(tableNameLookup, warning.TableId ?? warning.SourceTable, warning.TableName);
+
                         items.Add(new ValidationResultItem
                         {
                             Stage = "5단계",
-                            TableName = string.IsNullOrWhiteSpace(warning.TableName) ? "전체" : warning.TableName,
-                            ErrorType = "공간 관계 오류",
+                            TableId = tableId,
+                            TableName = tableName,
+                            ErrorType = !string.IsNullOrWhiteSpace(warning.ErrorCode) ? warning.ErrorCode : "공간 관계 경고",
                             Message = warning.Message
                         });
                     }

@@ -122,6 +122,30 @@
                           Style="{StaticResource CaptionText}" 
                           Margin="0,4,0,0"
                           Visibility="Collapsed"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Border x:Name="CurrentResultBadge"
+                            Background="#DBEAFE"
+                            CornerRadius="6"
+                            Padding="8,2"
+                            Margin="0,0,8,0"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="CurrentResultBadgeText"
+                                   Foreground="#1D4ED8"
+                                   FontWeight="SemiBold"/>
+                    </Border>
+                    <TextBlock x:Name="CurrentResultFileNameText"
+                              Text=""
+                              Style="{StaticResource CaptionText}"
+                              FontWeight="SemiBold"
+                              Foreground="#1F2937"
+                              Visibility="Collapsed"/>
+                </StackPanel>
+                <TextBlock x:Name="CurrentResultFilePathText"
+                          Text=""
+                          Style="{StaticResource CaptionText}"
+                          Foreground="#6B7280"
+                          Margin="0,2,0,0"
+                          Visibility="Collapsed"/>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -392,6 +416,7 @@
                                          ColumnWidth="*">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Table Id" Binding="{Binding TableId}" Width="*"/>
+                                        <DataGridTextColumn Header="Table Name" Binding="{Binding TableName}" Width="*"/>
                                         <DataGridTextColumn Header="Column Name" Binding="{Binding ColumnName}" Width="*"/>
                                         <DataGridTextColumn Header="Korean Name" Binding="{Binding ColumnKoreanName}" Width="*"/>
                                         <DataGridTextColumn Header="Expected Data Type" Binding="{Binding ExpectedDataType}" Width="*"/>
@@ -478,6 +503,8 @@
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Table Id" Binding="{Binding TableId}" Width="*" 
                                                            CanUserSort="True" SortMemberPath="TableId"/>
+                                        <DataGridTextColumn Header="Table Name" Binding="{Binding TableName}" Width="*" 
+                                                           CanUserSort="True" SortMemberPath="TableName"/>
                                         <DataGridTemplateColumn Header="Error Types Summary" Width="*" 
                                                                CanUserSort="True" SortMemberPath="ErrorTypesSummary">
                                             <DataGridTemplateColumn.CellTemplate>
@@ -636,6 +663,8 @@
                                          HorizontalScrollBarVisibility="Auto"
                                          CanUserResizeColumns="True">
                                     <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Table Id" Binding="{Binding TableId}" Width="*" 
+                                                           CanUserSort="True" SortMemberPath="TableId"/>
                                         <DataGridTextColumn Header="Table Name" Binding="{Binding TableName}" Width="*" 
                                                            CanUserSort="True" SortMemberPath="TableName"/>
                                         <DataGridTextColumn Header="Field Name" Binding="{Binding FieldName}" Width="*" 
@@ -732,7 +761,8 @@
                                          HorizontalScrollBarVisibility="Auto"
                                          CanUserResizeColumns="True">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Source Layer" Binding="{Binding SourceLayer}" Width="*" CanUserSort="True" SortMemberPath="SourceLayer"/>
+                                        <DataGridTextColumn Header="Table Id" Binding="{Binding TableId}" Width="*" CanUserSort="True" SortMemberPath="TableId"/>
+                                        <DataGridTextColumn Header="Table Name" Binding="{Binding TableName}" Width="*" CanUserSort="True" SortMemberPath="TableName"/>
                                         <DataGridTextColumn Header="Relation Type" Binding="{Binding RelationType}" Width="*" CanUserSort="True" SortMemberPath="RelationType"/>
                                         <DataGridTextColumn Header="Error Type" Binding="{Binding ErrorType}" Width="*" CanUserSort="True" SortMemberPath="ErrorType"/>
                                         <DataGridTextColumn Header="Source Object Id" Binding="{Binding SourceObjectId}" Width="*" CanUserSort="True" SortMemberPath="SourceObjectId"/>
@@ -834,7 +864,8 @@
                                          CanUserResizeColumns="True">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Stage" Binding="{Binding Stage}" Width="100" SortMemberPath="Stage"/>
-                                        <DataGridTextColumn Header="Table Name" Binding="{Binding TableName}" Width="140" SortMemberPath="TableName"/>
+                                        <DataGridTextColumn Header="Table Id" Binding="{Binding TableId}" Width="140" SortMemberPath="TableId"/>
+                                        <DataGridTextColumn Header="Table Name" Binding="{Binding TableName}" Width="160" SortMemberPath="TableName"/>
                                         <DataGridTextColumn Header="Error Type" Binding="{Binding ErrorType}" Width="160" SortMemberPath="ErrorType"/>
                                         <DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="*" SortMemberPath="Message"/>
                                     </DataGrid.Columns>

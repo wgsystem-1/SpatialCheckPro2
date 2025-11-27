@@ -47,18 +47,18 @@ namespace SpatialCheckPro.Services
             {
                 foreach (var r in validationResult.GeometryCheckResult.GeometryResults)
                 {
-                    AccumulateGeometry(summary, "GEOM_DUPLICATE", r.DuplicateCount);
-                    AccumulateGeometry(summary, "GEOM_OVERLAP", r.OverlapCount);
-                    AccumulateGeometry(summary, "GEOM_SELF_INTERSECTION", r.SelfIntersectionCount);
-                    AccumulateGeometry(summary, "GEOM_SELF_OVERLAP", r.SelfOverlapCount);
-                    AccumulateGeometry(summary, "GEOM_SLIVER", r.SliverCount);
-                    AccumulateGeometry(summary, "GEOM_SPIKE", r.SpikeCount);
-                    AccumulateGeometry(summary, "GEOM_SHORT_OBJECT", r.ShortObjectCount);
-                    AccumulateGeometry(summary, "GEOM_SMALL_AREA", r.SmallAreaCount);
-                    AccumulateGeometry(summary, "GEOM_POLYGON_IN_POLYGON", r.PolygonInPolygonCount);
-                    AccumulateGeometry(summary, "GEOM_MIN_POINT", r.MinPointCount);
-                    AccumulateGeometry(summary, "GEOM_UNDERSHOOT", r.UndershootCount);
-                    AccumulateGeometry(summary, "GEOM_OVERSHOOT", r.OvershootCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_001", r.DuplicateCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_002", r.OverlapCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_003", r.SelfIntersectionCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_010", r.SelfOverlapCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_004", r.SliverCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_009", r.SpikeCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_005", r.ShortObjectCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_006", r.SmallAreaCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_007", r.PolygonInPolygonCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_008", r.MinPointCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_011", r.UndershootCount);
+                    AccumulateGeometry(summary, "LOG_TOP_GEO_012", r.OvershootCount);
                 }
             }
 
@@ -185,14 +185,15 @@ namespace SpatialCheckPro.Services
             // 테이블 검수에서 오류가 있는 경우만 QcError 생성
             if (!tableResult.IsValid)
             {
+                var tableRuleId = "COM_OMS_TBL_001";
                 var qcError = new QcError
                 {
                     GlobalID = Guid.NewGuid().ToString(),
                     ErrType = QcErrorType.SCHEMA.ToString(),
-                    ErrCode = GenerateErrorCode("TBL", tableResult.TableId ?? "Unknown"),
+                    ErrCode = ResolveErrCode(tableRuleId, "TBL", tableResult.TableId ?? "Unknown"),
                     Severity = string.Empty,
                     Status = string.Empty,
-                    RuleId = $"TABLE_CHECK_{tableResult.TableId}",
+                    RuleId = tableRuleId, // 필수 테이블 누락 표준 ID
                     TableId = tableResult.TableId ?? string.Empty,
                     TableName = tableResult.TableName ?? tableResult.TableId ?? "Unknown",
                     SourceClass = tableResult.TableName ?? "Unknown",
@@ -229,17 +230,18 @@ namespace SpatialCheckPro.Services
             // 스키마 검수에서 오류가 있는 경우만 QcError 생성
             if (!schemaResult.IsValid)
             {
+                var schemaRuleId = "LOG_CNC_SCH_001";
                 var qcError = new QcError
                 {
                     GlobalID = Guid.NewGuid().ToString(),
                     ErrType = QcErrorType.SCHEMA.ToString(),
-                    ErrCode = GenerateErrorCode("SCH", schemaResult.ColumnName ?? "Unknown"),
+                    ErrCode = ResolveErrCode(schemaRuleId, "SCH", schemaResult.ColumnName ?? "Unknown"),
                     Severity = QcSeverity.MAJOR.ToString(),
                     Status = QcStatus.OPEN.ToString(),
-                    RuleId = $"SCHEMA_CHECK_{schemaResult.TableId}_{schemaResult.ColumnName}",
+                    RuleId = schemaRuleId, // 필수 컬럼 누락 표준 ID
                     TableId = schemaResult.TableId ?? string.Empty,
-                    TableName = schemaResult.TableId ?? string.Empty,
-                    SourceClass = schemaResult.TableId ?? "Unknown",
+                    TableName = !string.IsNullOrWhiteSpace(schemaResult.TableName) ? schemaResult.TableName : schemaResult.TableId ?? string.Empty,
+                    SourceClass = !string.IsNullOrWhiteSpace(schemaResult.TableName) ? schemaResult.TableName : schemaResult.TableId ?? "Unknown",
                     SourceOID = 0, // 스키마 검수는 특정 객체 없음
                     SourceGlobalID = null,
                     Message = $"스키마 검수 실패: {schemaResult.TableId}.{schemaResult.ColumnName}",
@@ -426,14 +428,18 @@ namespace SpatialCheckPro.Services
                     // 좌표가 있으면 Point로 표시, 없으면 원본 지오메트리 사용
                     bool hasValidCoordinates = (outX != 0 || outY != 0);
 
+                    var candidateRuleId = IsStandardRuleId(errorDetail.ErrorType)
+                        ? errorDetail.ErrorType!
+                        : $"GEOMETRY_CHECK_{geometryResult.TableId}_{errorDetail.ErrorType}";
+
                     var qcError = new QcError
                     {
                         GlobalID = Guid.NewGuid().ToString(),
                         ErrType = QcErrorType.GEOM.ToString(),
-                        ErrCode = GenerateErrorCode("GEO", errorDetail.ErrorType ?? "Unknown"),
+                        ErrCode = ResolveErrCode(candidateRuleId, "GEO", errorDetail.ErrorType ?? "Unknown"),
                         Severity = string.Empty,
                         Status = string.Empty,
-                        RuleId = $"GEOMETRY_CHECK_{geometryResult.TableId}_{errorDetail.ErrorType}",
+                        RuleId = candidateRuleId,
                         SourceClass = geometryResult.TableId ?? "Unknown",
                         SourceOID = ParseSourceOID(errorDetail.ObjectId),
                         SourceGlobalID = null,
@@ -481,14 +487,18 @@ namespace SpatialCheckPro.Services
 
             foreach (var error in checkResult.Errors)
             {
+                var relationRuleId = IsStandardRuleId(checkResult.CheckId)
+                    ? checkResult.CheckId
+                    : $"RELATION_CHECK_{checkResult.CheckId}";
+
                 var qcError = new QcError
                 {
                     GlobalID = Guid.NewGuid().ToString(),
                     ErrType = QcErrorType.REL.ToString(),
-                    ErrCode = GenerateErrorCode("REL", checkResult.CheckId),
+                    ErrCode = ResolveErrCode(checkResult.CheckId, "REL", checkResult.CheckId),
                     Severity = string.Empty,
                     Status = string.Empty,
-                    RuleId = $"RELATION_CHECK_{checkResult.CheckId}",
+                    RuleId = relationRuleId,
                     SourceClass = error.TableName ?? "Unknown",
                     SourceOID = ParseSourceOID(error.FeatureId),
                     SourceGlobalID = null, // 필요시 추후 설정
@@ -515,13 +525,38 @@ namespace SpatialCheckPro.Services
         }
 
         /// <summary>
-        /// 오류 코드 생성
+        /// 표준 RuleId가 있으면 그대로 ErrCode로 사용하고, 없으면 접두사 기반 해시 코드를 생성
+        /// </summary>
+        private string ResolveErrCode(string? candidateRuleId, string fallbackPrefix, string? fallbackKey)
+        {
+            if (!string.IsNullOrWhiteSpace(candidateRuleId))
+            {
+                return candidateRuleId!;
+            }
+
+            return GenerateErrorCode(fallbackPrefix, fallbackKey ?? "Unknown");
+        }
+
+        /// <summary>
+        /// 오류 코드 생성 (레거시 해시 방식)
         /// </summary>
         private string GenerateErrorCode(string prefix, string checkId)
         {
-            // 체크 ID를 기반으로 3자리 숫자 생성
             var hash = Math.Abs(checkId.GetHashCode()) % 1000;
             return $"{prefix}{hash:D3}";
+        }
+
+        private static bool IsStandardRuleId(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            return value.StartsWith("LOG_", StringComparison.OrdinalIgnoreCase)
+                || value.StartsWith("COM_", StringComparison.OrdinalIgnoreCase)
+                || value.StartsWith("THE_", StringComparison.OrdinalIgnoreCase)
+                || value.StartsWith("POS_", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -660,6 +695,10 @@ namespace SpatialCheckPro.Services
                 if (e.SourceObjectId.HasValue) sourceOid = e.SourceObjectId.Value;
                 else if (!string.IsNullOrWhiteSpace(e.FeatureId) && long.TryParse(e.FeatureId, out var parsed)) sourceOid = parsed;
 
+                var candidateRuleId = IsStandardRuleId(e.ErrorCode)
+                    ? e.ErrorCode!
+                    : $"{errType}_{e.ErrorCode ?? e.ErrorType.ToString()}";
+
                 var details = new Dictionary<string, object?>
                 {
                     ["FieldName"] = e.FieldName,
@@ -679,10 +718,11 @@ namespace SpatialCheckPro.Services
                 {
                     GlobalID = Guid.NewGuid().ToString(),
                     ErrType = errType,
-                    ErrCode = string.IsNullOrWhiteSpace(e.ErrorCode) ? errType : e.ErrorCode,
+                    ErrCode = ResolveErrCode(candidateRuleId, errType, e.ErrorCode ?? e.ErrorType.ToString()),
                     Severity = DetermineSeverity(e.Severity).ToString(),
                     Status = QcStatus.OPEN.ToString(),
-                    RuleId = $"{errType}_{e.ErrorCode ?? e.ErrorType.ToString()}",
+                    // RuleId 생성 로직 개선: 표준 RuleId는 그대로 사용
+                    RuleId = candidateRuleId,
                     SourceClass = sourceClass,
                     SourceOID = sourceOid,
                     SourceGlobalID = null,

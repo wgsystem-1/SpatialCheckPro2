@@ -9,6 +9,7 @@ using OSGeo.OGR;
 using SpatialCheckPro.Models;
 using SpatialCheckPro.Models.Config;
 using SpatialCheckPro.Models.Enums;
+using SpatialCheckPro.Utils;
 
 namespace SpatialCheckPro.Services
 {
@@ -362,8 +363,10 @@ namespace SpatialCheckPro.Services
             string message,
             Geometry pointGeometry)
         {
-            var envelope = new OSGeo.OGR.Envelope();
-            pointGeometry.GetEnvelope(envelope);
+            // Envelope 중심 대신 PointOnSurface 사용 시도 (점은 보통 Envelope 중심과 같지만, 일관성 유지)
+            var (pointX, pointY) = GeometryCoordinateExtractor.GetEnvelopeCenter(pointGeometry);
+            // 점은 항상 자신 내부에 있으므로 Envelope 중심이 곧 점 위치입니다. 
+            // 다만 GeometryCoordinateExtractor를 사용하여 코드 일관성을 높입니다.
 
             return new SpatialRelationError
             {
@@ -374,8 +377,8 @@ namespace SpatialCheckPro.Services
                 RelationType = rule.RelationType,
                 ErrorType = "POINT_IN_POLYGON_VIOLATION",
                 Severity = rule.ViolationSeverity,
-                ErrorLocationX = (envelope.MinX + envelope.MaxX) / 2, // 중심점 X
-                ErrorLocationY = (envelope.MinY + envelope.MaxY) / 2, // 중심점 Y
+                ErrorLocationX = pointX,
+                ErrorLocationY = pointY,
                 GeometryWKT = ExportGeometryToWkt(pointGeometry),
                 Message = message,
                 Properties = new Dictionary<string, object>

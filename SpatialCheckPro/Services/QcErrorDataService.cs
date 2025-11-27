@@ -17,6 +17,7 @@ namespace SpatialCheckPro.Services
     {
         private readonly ILogger<QcErrorDataService> _logger;
         private readonly FgdbSchemaService _schemaService;
+        private const double UNIQUE_POINT_TOLERANCE = 1e-7;
 
         public QcErrorDataService(ILogger<QcErrorDataService> logger, FgdbSchemaService schemaService)
         {
@@ -186,12 +187,14 @@ namespace SpatialCheckPro.Services
                             return false;
                         }
 
+                        bool forceNoGeom = IsNonSpatialError(qcError);
+
                         // 우선 포인트 지오메트리를 생성 시도하여 저장 레이어를 결정
                         // 우선순위: 오류 상세 좌표(X/Y) → WKT → Geometry
                         OSGeo.OGR.Geometry? pointGeometryCandidate = null;
 
                         // 1차: 오류 상세 좌표(X/Y)가 있는 경우 이를 우선 사용 (0,0은 무시)
-                        if (qcError.X != 0 || qcError.Y != 0)
+                        if (!forceNoGeom && (qcError.X != 0 || qcError.Y != 0))
                         {
                             try
                             {
@@ -217,11 +220,11 @@ namespace SpatialCheckPro.Services
                             catch { pointGeometryCandidate = null; }
                         }
 
-                        // 3차: 기존 지오메트리에서 Point 생성
-                        if (pointGeometryCandidate == null && qcError.Geometry != null)
-                        {
-                            try { pointGeometryCandidate = CreateSimplePoint(qcError.Geometry); } catch { pointGeometryCandidate = null; }
-                        }
+                // 3차: 기존 지오메트리에서 Point 생성
+                if (pointGeometryCandidate == null && qcError.Geometry != null)
+                {
+                    try { pointGeometryCandidate = CreateSimplePoint(qcError.Geometry); } catch { pointGeometryCandidate = null; }
+                }
 
                         // 저장 레이어 결정: 포인트 지오메트리가 있으면 Point, 없으면 NoGeom
                         string layerName = pointGeometryCandidate != null ? "QC_Errors_Point" : "QC_Errors_NoGeom";
@@ -520,21 +523,19 @@ namespace SpatialCheckPro.Services
                     pointLayer.StartTransaction();
                     noGeomLayer?.StartTransaction();
 
-                    foreach (var qcError in qcErrors)
-                    {
-                        // 공통 필드 준비
-                        OSGeo.OGR.Geometry? pointGeometry = null;
+                    foreach (var qcError in qcErrors) { bool forceNoGeom = IsNonSpatialError(qcError); OSGeo.OGR.Geometry? pointGeometry = null; bool coordinateDerived = false;
                         try
                         {
                             // 1차: 좌표로 Point 생성 (0,0은 무시)
-                            if (qcError.X != 0 || qcError.Y != 0)
+                            if (!forceNoGeom && (qcError.X != 0 || qcError.Y != 0))
                             {
                                 var p = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
                                 p.AddPoint(qcError.X, qcError.Y, 0);
                                 pointGeometry = p;
+                                coordinateDerived = true;
                             }
                             // 2차: WKT에서 Point 생성
-                            else if (!string.IsNullOrWhiteSpace(qcError.GeometryWKT))
+                            else if (!forceNoGeom && !string.IsNullOrWhiteSpace(qcError.GeometryWKT))
                             {
                                 var geometryFromWkt = OSGeo.OGR.Geometry.CreateFromWkt(qcError.GeometryWKT);
                                 if (geometryFromWkt != null)
@@ -544,7 +545,7 @@ namespace SpatialCheckPro.Services
                                 }
                             }
                             // 3차: 기존 지오메트리에서 Point 생성
-                            else if (qcError.Geometry != null)
+                            else if (!forceNoGeom && qcError.Geometry != null)
                             {
                                 pointGeometry = CreateSimplePoint(qcError.Geometry);
                             }
@@ -579,6 +580,18 @@ namespace SpatialCheckPro.Services
 
                             if (pointGeometry != null)
                             {
+                                if (!coordinateDerived)
+                                {
+                                    // 좌표가 비어 있었던 경우 지오메트리에서 좌표를 추출해 저장
+                                    if (pointGeometry.GetPointCount() > 0)
+                                    {
+                                        var px = pointGeometry.GetX(0);
+                                        var py = pointGeometry.GetY(0);
+                                        feature.SetField("X", px);
+                                        feature.SetField("Y", py);
+                                    }
+                                }
+
                                 // 좌표 확인 로그 (디버그)
                                 string wkt = string.Empty;
                                 pointGeometry.ExportToWkt(out wkt);
@@ -862,148 +875,21 @@ namespace SpatialCheckPro.Services
         /// </summary>
         /// <param name="geometry">원본 지오메트리</param>
         /// <returns>Point 지오메트리</returns>
-        private OSGeo.OGR.Geometry? CreateSimplePoint(OSGeo.OGR.Geometry geometry)
+                private OSGeo.OGR.Geometry? CreateSimplePoint(OSGeo.OGR.Geometry geometry)
         {
             try
             {
-                if (geometry == null || geometry.IsEmpty())
+                if (geometry == null || geometry.IsEmpty()) return null;
+                var flatType = (wkbGeometryType)((int)geometry.GetGeometryType() & 0xFF);
+                if (flatType == wkbGeometryType.wkbPoint) return geometry.Clone();
+                var firstPoint = GetFirstPointRecursive(geometry);
+                if (firstPoint != null)
                 {
-                    return null;
+                    var p = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
+                    p.AddPoint(firstPoint.Value.X, firstPoint.Value.Y, 0);
+                    return p;
                 }
-
-                // 지오메트리 타입을 평탄화하여 25D 등 변형 타입도 정확히 분기
-                var rawType = geometry.GetGeometryType();
-                var geomType = (wkbGeometryType)((int)rawType & 0xFF);
-                
-                // POINT: 그대로 사용
-                if (geomType == wkbGeometryType.wkbPoint)
-                {
-                    return geometry.Clone();
-                }
-                
-                // MultiPoint: 첫 번째 Point 사용
-                if (geomType == wkbGeometryType.wkbMultiPoint)
-                {
-                    if (geometry.GetGeometryCount() > 0)
-                    {
-                        var firstPoint = geometry.GetGeometryRef(0);
-                        return firstPoint?.Clone();
-                    }
-                }
-                
-                // LineString: 첫 번째 점 사용
-                if (geomType == wkbGeometryType.wkbLineString)
-                {
-                    if (geometry.GetPointCount() > 0)
-                    {
-                        var point = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
-                        // GDAL/OGR API에서 올바른 방법 사용
-                        var pointArray = new double[3];
-                        geometry.GetPoint(0, pointArray);
-                        point.AddPoint(pointArray[0], pointArray[1], pointArray[2]);
-                        
-                        _logger.LogDebug("LineString 첫점 추출: ({X}, {Y})", pointArray[0], pointArray[1]);
-                        return point;
-                    }
-                }
-                
-                // MultiLineString: 첫 번째 LineString의 첫 점 사용
-                if (geomType == wkbGeometryType.wkbMultiLineString)
-                {
-                    if (geometry.GetGeometryCount() > 0)
-                    {
-                        var firstLine = geometry.GetGeometryRef(0);
-                        if (firstLine != null && firstLine.GetPointCount() > 0)
-                        {
-                            var point = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
-                            var pointArray = new double[3];
-                            firstLine.GetPoint(0, pointArray);
-                            point.AddPoint(pointArray[0], pointArray[1], pointArray[2]);
-                            
-                            _logger.LogDebug("MultiLineString 첫점 추출: ({X}, {Y})", pointArray[0], pointArray[1]);
-                            return point;
-                        }
-                    }
-                }
-                
-                // Polygon: 내부 보장 포인트(PointOnSurface) 우선 사용
-                if (geomType == wkbGeometryType.wkbPolygon)
-                {
-                    try
-                    {
-                        using var pos = geometry.PointOnSurface();
-                        if (pos != null && !pos.IsEmpty())
-                        {
-                            _logger.LogDebug("Polygon PointOnSurface 사용");
-                            return pos.Clone();
-                        }
-                    }
-                    catch { /* PointOnSurface 미지원 시 폴백 */ }
-
-                    if (geometry.GetGeometryCount() > 0)
-                    {
-                        // 최종 폴백: 외부 링 첫 점(경계 상)
-                        var exteriorRing = geometry.GetGeometryRef(0);
-                        if (exteriorRing != null && exteriorRing.GetPointCount() > 0)
-                        {
-                            var point = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
-                            var pointArray = new double[3];
-                            exteriorRing.GetPoint(0, pointArray);
-                            point.AddPoint(pointArray[0], pointArray[1], pointArray[2]);
-                            _logger.LogDebug("Polygon 외부 링 첫점 폴백: ({X}, {Y})", pointArray[0], pointArray[1]);
-                            return point;
-                        }
-                    }
-                }
-                
-                // MultiPolygon: PointOnSurface 우선, 실패 시 첫 Polygon 외부 링 첫점
-                if (geomType == wkbGeometryType.wkbMultiPolygon)
-                {
-                    try
-                    {
-                        using var pos = geometry.PointOnSurface();
-                        if (pos != null && !pos.IsEmpty())
-                        {
-                            _logger.LogDebug("MultiPolygon PointOnSurface 사용");
-                            return pos.Clone();
-                        }
-                    }
-                    catch { /* PointOnSurface 미지원 시 폴백 */ }
-
-                    if (geometry.GetGeometryCount() > 0)
-                    {
-                        var firstPolygon = geometry.GetGeometryRef(0);
-                        if (firstPolygon != null && firstPolygon.GetGeometryCount() > 0)
-                        {
-                            var exteriorRing = firstPolygon.GetGeometryRef(0);
-                            if (exteriorRing != null && exteriorRing.GetPointCount() > 0)
-                            {
-                                var point = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
-                                var pointArray = new double[3];
-                                exteriorRing.GetPoint(0, pointArray);
-                                point.AddPoint(pointArray[0], pointArray[1], pointArray[2]);
-                                
-                                _logger.LogDebug("MultiPolygon 외부 링 첫점 폴백: ({X}, {Y})", pointArray[0], pointArray[1]);
-                                return point;
-                            }
-                        }
-                    }
-                }
-                
-                // 기타 지오메트리 타입: 중심점으로 폴백
-                var envelope = new OSGeo.OGR.Envelope();
-                geometry.GetEnvelope(envelope);
-                
-                double centerX = (envelope.MinX + envelope.MaxX) / 2.0;
-                double centerY = (envelope.MinY + envelope.MaxY) / 2.0;
-                
-                var fallbackPoint = new OSGeo.OGR.Geometry(wkbGeometryType.wkbPoint);
-                fallbackPoint.AddPoint(centerX, centerY, 0);
-                
-                _logger.LogDebug("지오메트리를 중심점으로 폴백: {GeometryType} → Point ({X}, {Y})", 
-                    geomType, centerX, centerY);
-                
-                return fallbackPoint;
+                return null;
             }
             catch (Exception ex)
             {
@@ -1012,21 +898,35 @@ namespace SpatialCheckPro.Services
             }
         }
 
+        private (double X, double Y)? GetFirstPointRecursive(OSGeo.OGR.Geometry geometry)
+        {
+            if (geometry == null || geometry.IsEmpty()) return null;
+            var type = (wkbGeometryType)((int)geometry.GetGeometryType() & 0xFF);
+            if (type == wkbGeometryType.wkbPoint) return (geometry.GetX(0), geometry.GetY(0));
+            if (geometry.GetGeometryCount() > 0)
+            {
+                var sub = geometry.GetGeometryRef(0);
+                return GetFirstPointRecursive(sub);
+            }
+            if (geometry.GetPointCount() > 0) return (geometry.GetX(0), geometry.GetY(0));
+            return null;
+        }
+
         /// <summary>
-        /// 비공간 오류인지 판단합니다 (기존 메서드 유지)
+        /// 비공간 오류인지 판단합니다
         /// </summary>
         /// <param name="qcError">QC 오류 객체</param>
         /// <returns>비공간 오류 여부</returns>
         private bool IsNonSpatialError(QcError qcError)
         {
-            // 1. 지오메트리 정보가 전혀 없는 경우
-            bool hasNoGeometry = string.IsNullOrEmpty(qcError.GeometryWKT) && 
-                                qcError.Geometry == null && 
-                                (qcError.X == 0 && qcError.Y == 0);
+            // 1. 지오메트리 정보가 있으면 무조건 공간 오류로 처리
+            bool hasGeometry = !string.IsNullOrEmpty(qcError.GeometryWKT) || 
+                               qcError.Geometry != null || 
+                               (qcError.X != 0 || qcError.Y != 0);
             
-            if (hasNoGeometry)
+            if (hasGeometry)
             {
-                return true;
+                return false;
             }
             
             // 2. 비공간 오류 타입들
@@ -1055,7 +955,7 @@ namespace SpatialCheckPro.Services
                 return true;
             }
             
-            // 4. 메시지 내용으로 판단
+            // 4. 메시지 내용으로 판단 (최후의 수단)
             var nonSpatialKeywords = new[]
             {
                 "스키마", "속성", "테이블", "필드", "도메인", "제약조건",
@@ -1315,3 +1215,5 @@ namespace SpatialCheckPro.Services
         }
     }
 }
+
+

@@ -7,14 +7,14 @@
              d:DesignHeight="800" d:DesignWidth="1200"
              Background="White" HorizontalAlignment="Center" VerticalAlignment="Center">
 
-    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Background="White">
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Background="White" Height="600" Width="1000">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto" MinHeight="3"/>
         </Grid.RowDefinitions>
 
         <!-- 메인 컨텐츠 -->
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,70,0,0" Background="White">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,70,0,0" Background="White" Width="800" Height="450">
             <!-- 로고 및 타이틀 -->
             <StackPanel HorizontalAlignment="Center" Margin="0,0,0,40" Background="White">
                 <!-- 애플리케이션 로고 (중앙에 큰 아이콘으로 표시) -->
@@ -41,17 +41,17 @@
             <Border Background="White" 
                    CornerRadius="12" 
                    Padding="32,24"
-                   MaxWidth="700" Height="120" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,36" Width="450">
+                   MaxWidth="700" HorizontalAlignment="Center" Margin="0,0,0,36" Width="450" Height="107">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.1"/>
                 </Border.Effect>
 
-                <StackPanel Background="White">
+                <StackPanel Background="White" Margin="-22,0,-22,0" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <TextBlock TextWrapping="Wrap" 
                               FontSize="14" 
                               Foreground="#374151"
                               LineHeight="24"
-                              TextAlignment="Center" Height="40" HorizontalAlignment="Center" FontFamily="KoPubDotum Medium" FontWeight="Bold" Width="421" Background="White"><Run Text="본 검수 프로그램은"/><LineBreak/><Run Text="국가기본도 Master DB 데이터 모델을 기반으로 개발되었습니다."/></TextBlock>
+                              TextAlignment="Center" Height="48" HorizontalAlignment="Center" FontFamily="KoPubDotum Medium" FontWeight="Bold" Width="417" Background="White"><Run Text="본 검수 프로그램은"/><LineBreak/><Run Text="국가기본도 Master DB 데이터 모델을 기반으로 개발되었습니다."/></TextBlock>
                 </StackPanel>
             </Border>
 
@@ -61,11 +61,11 @@
         </StackPanel>
 
         <!-- 하단 정보 -->
-        <Border Grid.Row="1" 
+        <Border 
                Background="White" 
                BorderBrush="#E5E7EB" 
                BorderThickness="0,1,0,0"
-               Padding="20">
+               Padding="20" Margin="0,526,0,1" Grid.RowSpan="2">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -88,11 +88,11 @@
 
                 <!-- 시스템 정보 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <TextBlock Text="ISO 19157 데이터 품질 표준 준수" 
+                    <TextBlock 
                               FontSize="11" 
                               Foreground="#9CA3AF"
                               VerticalAlignment="Center"
-                              Margin="0,0,20,0"/>
+                              Margin="0,0,20,0"><Run Text="ISO 19157 데이터 품질 표준 준수"/><LineBreak/><Run Language="ko-kr" Text="OGC Simple Feature 준수"/></TextBlock>
                     <TextBlock Text="© 2025 (주)우리강산시스템" 
                               FontSize="11" 
                               Foreground="#9CA3AF"

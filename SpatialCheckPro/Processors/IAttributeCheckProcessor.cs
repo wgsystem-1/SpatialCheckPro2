@@ -26,7 +26,8 @@ namespace SpatialCheckPro.Processors
         /// <param name="rules">속성 검수 규칙 목록</param>
         /// <param name="token">취소 토큰</param>
         /// <returns>검수 오류 목록</returns>
-        Task<List<ValidationError>> ValidateAsync(string dataSourcePath, IValidationDataProvider dataProvider, List<AttributeCheckConfig> rules, CancellationToken token = default);
+        /// <param name="validTableIds">유효한 테이블 ID 목록 (선택사항, 지정 시 해당 테이블만 검사)</param>
+        Task<List<ValidationError>> ValidateAsync(string dataSourcePath, IValidationDataProvider dataProvider, List<AttributeCheckConfig> rules, IEnumerable<string>? validTableIds = null, CancellationToken token = default);
 
         /// <summary>
         /// 단일 속성 검수 규칙을 처리합니다 (병렬 처리용)

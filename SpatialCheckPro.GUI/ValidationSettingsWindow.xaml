@@ -250,7 +250,6 @@
                                     <DataGridTextColumn Binding="{Binding Item.FieldName}" Header="FieldName" Width="*"/>
                                     <DataGridTextColumn Binding="{Binding Item.CheckType}" Header="CheckType" Width="*"/>
                                     <DataGridTextColumn Binding="{Binding Item.Parameters}" Header="Parameters" Width="*"/>
-                                    <DataGridTextColumn Binding="{Binding Item.Severity}" Header="Severity" Width="*"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </TabItem>

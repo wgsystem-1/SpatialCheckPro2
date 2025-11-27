@@ -60,5 +60,10 @@ namespace SpatialCheckPro.Processors
         /// 진행률 업데이트 이벤트
         /// </summary>
         event EventHandler<RelationValidationProgressEventArgs>? ProgressUpdated;
+
+        /// <summary>
+        /// 캐시된 데이터를 정리합니다
+        /// </summary>
+        void ClearCache();
     }
 }

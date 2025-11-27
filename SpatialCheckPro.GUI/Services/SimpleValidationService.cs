@@ -1023,7 +1023,20 @@ namespace SpatialCheckPro.GUI.Services
                 ReportProgress(4, "속성 관계 검수", 0, "속성 관계 검수를 시작합니다...");
                 _logger.LogInformation("4단계: 속성 관계 검수 시작");
 
-                var attributeResult = await ExecuteAttributeRelationCheckAsync(dataSourcePath, dataProvider, attributeConfigPath, codelistPath);
+                var definedTableIds = result.TableCheckResult?.TableResults?
+                    .Where(t => string.Equals(t.TableExistsCheck, "Y", StringComparison.OrdinalIgnoreCase)
+                                && (t.FeatureCount ?? 0) > 0
+                                && !string.IsNullOrWhiteSpace(t.TableId))
+                    .Select(t => t.TableId!)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var attributeResult = await ExecuteAttributeRelationCheckAsync(
+                    dataSourcePath,
+                    dataProvider,
+                    attributeConfigPath,
+                    codelistPath,
+                    definedTableIds,
+                    cancellationToken);
                 
                 result.AttributeRelationCheckResult = attributeResult;
                 result.ErrorCount += attributeResult.ErrorCount;
@@ -1070,69 +1083,10 @@ namespace SpatialCheckPro.GUI.Services
 
                 var relationResult = await ExecuteRelationCheckAsync(dataSourcePath, dataProvider, relationConfigPath, _selectedStage5Items);
                 
-                // ProcessedRulesCount 보존 (재분류 전에 저장)
-                var originalProcessedRulesCount = relationResult.ProcessedRulesCount;
-                
-                // REL_CENTERLINE_ATTR_MISMATCH 오류는 속성 관계 검수로 재분류
-                var centerlineAttrMismatchErrors = relationResult.Errors
-                    .Where(e => !string.IsNullOrWhiteSpace(e.ErrorCode) 
-                        && e.ErrorCode.Equals("REL_CENTERLINE_ATTR_MISMATCH", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                
-                if (centerlineAttrMismatchErrors.Count > 0)
-                {
-                    // 속성 관계 검수 결과에 추가 (이미 존재하는 경우)
-                    if (result.AttributeRelationCheckResult != null)
-                    {
-                        result.AttributeRelationCheckResult.Errors.AddRange(centerlineAttrMismatchErrors);
-                        // ErrorCount는 Errors.Count를 기준으로 재계산 (동기화 보장)
-                        result.AttributeRelationCheckResult.ErrorCount = result.AttributeRelationCheckResult.Errors.Count;
-                        result.AttributeRelationCheckResult.IsValid = result.AttributeRelationCheckResult.ErrorCount == 0;
-                        _logger.LogInformation("REL_CENTERLINE_ATTR_MISMATCH 오류 {Count}개를 속성 관계 검수로 재분류", centerlineAttrMismatchErrors.Count);
-                    }
-                    else
-                    {
-                        // AttributeRelationCheckResult가 없으면 생성
-                        result.AttributeRelationCheckResult = new AttributeRelationCheckResult
-                        {
-                            StartedAt = DateTime.Now,
-                            IsValid = false,
-                            ErrorCount = centerlineAttrMismatchErrors.Count,
-                            WarningCount = 0,
-                            Errors = new List<ValidationError>(centerlineAttrMismatchErrors),
-                            Warnings = new List<ValidationError>(),
-                            Message = $"속성 관계 검수 (재분류된 오류 {centerlineAttrMismatchErrors.Count}개 포함)"
-                        };
-                        _logger.LogInformation("AttributeRelationCheckResult 생성 및 REL_CENTERLINE_ATTR_MISMATCH 오류 {Count}개 추가", centerlineAttrMismatchErrors.Count);
-                    }
-                    
-                    // 공간 관계 검수 결과에서 제거
-                    foreach (var error in centerlineAttrMismatchErrors)
-                    {
-                        relationResult.Errors.Remove(error);
-                    }
-                    // ErrorCount는 Errors.Count를 기준으로 재계산 (동기화 보장, 음수 방지)
-                    relationResult.ErrorCount = Math.Max(0, relationResult.Errors.Count);
-                    relationResult.IsValid = relationResult.ErrorCount == 0;
-                    _logger.LogInformation("공간 관계 검수에서 REL_CENTERLINE_ATTR_MISMATCH 제거 후 ErrorCount: {Count} (Errors.Count: {ErrorsCount})", 
-                        relationResult.ErrorCount, relationResult.Errors.Count);
-                }
-                
-                // ProcessedRulesCount 복원 (재분류 후에도 유지)
-                relationResult.ProcessedRulesCount = originalProcessedRulesCount;
-                _logger.LogInformation("공간 관계 검수 ProcessedRulesCount: {Count} (재분류 후에도 유지)", relationResult.ProcessedRulesCount);
-                
                 result.RelationCheckResult = relationResult;
                 result.ErrorCount += relationResult.ErrorCount;
                 result.WarningCount += relationResult.WarningCount;
                 
-                // 재분류된 오류도 전체 집계에 포함
-                if (centerlineAttrMismatchErrors.Count > 0 && result.AttributeRelationCheckResult != null)
-                {
-                    // 이미 AttributeRelationCheckResult.ErrorCount에 포함되어 있으므로 중복 집계 방지
-                    // 하지만 전체 ErrorCount는 이미 정확하게 계산됨 (4단계에서 이미 집계됨)
-                }
-
                 // 오류가 있으면 실패로 표시
                 bool isRelationSuccessful = relationResult.ErrorCount == 0;
                 string relationMessage = isRelationSuccessful 
@@ -1949,7 +1903,13 @@ namespace SpatialCheckPro.GUI.Services
         /// <summary>
         /// 4단계 속성 관계 검수를 실행합니다
         /// </summary>
-        private async Task<AttributeRelationCheckResult> ExecuteAttributeRelationCheckAsync(string dataSourcePath, IValidationDataProvider dataProvider, string attributeConfigPath, string? codelistPath)
+        private async Task<AttributeRelationCheckResult> ExecuteAttributeRelationCheckAsync(
+            string dataSourcePath,
+            IValidationDataProvider dataProvider,
+            string attributeConfigPath,
+            string? codelistPath,
+            IEnumerable<string>? validTableIds,
+            CancellationToken cancellationToken)
         {
             var result = new AttributeRelationCheckResult
             {
@@ -1998,7 +1958,12 @@ namespace SpatialCheckPro.GUI.Services
                 }
 
                 // 속성 관계 검수 실행
-                var attrErrors = await _attributeCheckProcessor.ValidateAsync(dataSourcePath, dataProvider, attributeConfigs);
+                var attrErrors = await _attributeCheckProcessor.ValidateAsync(
+                    dataSourcePath,
+                    dataProvider,
+                    attributeConfigs,
+                    validTableIds,
+                    cancellationToken);
                 
                 foreach (var e in attrErrors)
                 {

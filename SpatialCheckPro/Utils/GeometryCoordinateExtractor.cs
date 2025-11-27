@@ -65,18 +65,28 @@ namespace SpatialCheckPro.Utils
         }
 
         /// <summary>
-        /// 첫 번째 정점 추출
+        /// 첫 번째 정점 추출 (재귀적 탐색)
         /// </summary>
         public static (double X, double Y) GetFirstVertex(OSGeo.OGR.Geometry geometry)
         {
             if (geometry == null || geometry.IsEmpty())
                 return (0, 0);
 
+            // 1. 점이 직접 있는 경우 (Point, LineString, LinearRing 등)
             if (geometry.GetPointCount() > 0)
             {
                 return (geometry.GetX(0), geometry.GetY(0));
             }
 
+            // 2. 하위 지오메트리가 있는 경우 (Polygon, MultiPolygon, MultiLineString 등)
+            int geomCount = geometry.GetGeometryCount();
+            if (geomCount > 0)
+            {
+                var subGeom = geometry.GetGeometryRef(0);
+                return GetFirstVertex(subGeom);
+            }
+
+            // 3. 그래도 없으면 Envelope 중심 (최후의 수단)
             return GetEnvelopeCenter(geometry);
         }
 
@@ -112,7 +122,13 @@ namespace SpatialCheckPro.Utils
                 // NTS 예외 무시하고 폴백
             }
 
-            // 3) 최종 폴백: Envelope 중심
+            // 3) 최종 폴백: 첫 번째 정점 (없으면 Envelope 중심)
+            if (ntsGeometry.NumPoints > 0)
+            {
+                var coord = ntsGeometry.Coordinates[0];
+                return (coord.X, coord.Y);
+            }
+
             var env = ntsGeometry.EnvelopeInternal;
             return ((env.MinX + env.MaxX) / 2.0, (env.MinY + env.MaxY) / 2.0);
         }

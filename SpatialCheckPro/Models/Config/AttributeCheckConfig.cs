@@ -29,9 +29,6 @@ namespace SpatialCheckPro.Models.Config
         [Name("Parameters")]
         public string? Parameters { get; set; } // 예: 코드리스트: PRC001|PRC002, 범위: 0..3.0, 정규식: ^[A-Z]{3}$
 
-        [Name("Severity")]
-        public string? Severity { get; set; } // INFO|MINOR|MAJOR|CRIT
-
         [Name("Note")]
         public string? Note { get; set; }
     }

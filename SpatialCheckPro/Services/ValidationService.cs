@@ -219,6 +219,18 @@ namespace SpatialCheckPro.Services
             }
             finally
             {
+                // 리소스 및 캐시 명시적 정리 (다음 검수 딜레이 방지)
+                try
+                {
+                    _geometryCheckProcessor.ClearSpatialIndexCache();
+                    _relationCheckProcessor.ClearCache();
+                    _logger.LogDebug("검수 프로세스 완료 후 캐시 정리 수행됨");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "검수 후 캐시 정리 중 오류 발생");
+                }
+
                 // 정리 작업
                 _runningValidations.TryRemove(validationId, out _);
                 _validationStatuses[validationId] = validationResult.Status;
@@ -515,7 +527,7 @@ namespace SpatialCheckPro.Services
                 // 현재 요구사항 기반 기본 관계 검수 실행 (Processor가 케이스별 내부 처리)
                 cancellationToken.ThrowIfCancellationRequested();
                 // CSV의 모든 규칙을 순회 처리 (Enabled=Y 만)
-                foreach (var rc in configList.Where(r => string.Equals(r.Enabled, "Y", StringComparison.OrdinalIgnoreCase)))
+                foreach (var rc in configList.Where(r => string.Equals(r.Enabled, "Y", StringComparison.OrdinalIgnoreCase) && !r.RuleId.TrimStart().StartsWith("#")))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var relationValidation = await _relationCheckProcessor.ProcessAsync(spatialFile.FilePath, rc, cancellationToken);

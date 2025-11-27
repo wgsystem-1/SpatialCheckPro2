@@ -8,6 +8,7 @@ using OSGeo.OSR;
 using SpatialCheckPro.Models;
 using SpatialCheckPro.Models.Config;
 using SpatialCheckPro.Models.Enums;
+using SpatialCheckPro.Utils;
 
 namespace SpatialCheckPro.Services
 {
@@ -806,8 +807,8 @@ namespace SpatialCheckPro.Services
                 RelationType = relationType,
                 ErrorType = errorType,
                 Severity = ErrorSeverity.Error,
-                ErrorLocationX = centroid.GetX(0),
-                ErrorLocationY = centroid.GetY(0),
+                ErrorLocationX = GeometryCoordinateExtractor.GetPolygonInteriorPoint(errorGeometry).X,
+                ErrorLocationY = GeometryCoordinateExtractor.GetPolygonInteriorPoint(errorGeometry).Y,
                 GeometryWKT = GetWktFromGeometry(errorGeometry),
                 Message = message,
                 Properties = new Dictionary<string, object>

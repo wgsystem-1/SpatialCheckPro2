@@ -267,7 +267,7 @@ namespace SpatialCheckPro.GUI.Services
                         schemaItem.ActualNotNull = actualField.IsNullable ? "N" : "Y";
 
                         // 상세 비교 수행
-                        await PerformDetailedFieldComparisonAsync(expectedConfig, actualField, schemaItem, gdbPath);
+                        PerformDetailedFieldComparison(expectedConfig, actualField, schemaItem);
 
                         // UK/FK 검수 결과 통합 (캐시 사용)
                         await IntegrateUkFkResultsAsync(expectedConfig, schemaItem, gdbPath, ukResultsCache);
@@ -391,11 +391,10 @@ namespace SpatialCheckPro.GUI.Services
         /// <summary>
         /// 필드의 상세 비교를 수행합니다
         /// </summary>
-        private async Task PerformDetailedFieldComparisonAsync(
+        private void PerformDetailedFieldComparison(
             SchemaConfig expectedConfig,
             DetailedFieldInfo actualField,
-            SchemaValidationItem schemaItem,
-            string gdbPath)
+            SchemaValidationItem schemaItem)
         {
             // 1. 데이터 타입 비교
             schemaItem.DataTypeMatches = CompareDataTypes(expectedConfig.DataType, actualField.DataType);
@@ -422,13 +421,8 @@ namespace SpatialCheckPro.GUI.Services
                     actualNotNull ? "NotNull" : "Nullable", schemaItem.NotNullMatches);
             }
 
-            // 4. UK/FK 제약 검사 (실제 데이터 검사)
-            schemaItem.UniqueKeyMatches = await ValidateUniqueKeyAsync(expectedConfig, actualField, gdbPath);
-            schemaItem.ForeignKeyMatches = await ValidateForeignKeyAsync(expectedConfig, actualField, gdbPath);
-
-            _logger.LogDebug("필드 {FieldName} 비교 결과: 타입={TypeMatch}, 길이={LengthMatch}, NotNull={NotNullMatch}, UK={UkMatch}, FK={FkMatch}",
-                expectedConfig.FieldName, schemaItem.DataTypeMatches, schemaItem.LengthMatches, schemaItem.NotNullMatches,
-                schemaItem.UniqueKeyMatches, schemaItem.ForeignKeyMatches);
+            _logger.LogDebug("필드 {FieldName} 비교 결과: 타입={TypeMatch}, 길이={LengthMatch}, NotNull={NotNullMatch}",
+                expectedConfig.FieldName, schemaItem.DataTypeMatches, schemaItem.LengthMatches, schemaItem.NotNullMatches);
         }        
 /// <summary>
         /// 데이터 타입을 비교합니다
@@ -479,142 +473,6 @@ namespace SpatialCheckPro.GUI.Services
             return Math.Abs(expectedLength - actualLength) <= 2;
         }
 
-        /// <summary>
-        /// Unique Key 제약을 검증합니다 (실제 데이터 중복 검사)
-        /// </summary>
-        private async Task<bool> ValidateUniqueKeyAsync(SchemaConfig expectedConfig, DetailedFieldInfo actualField, string gdbPath)
-        {
-            // UK 설정이 없거나 "Y"가 아니면 검사 안함
-            if (string.IsNullOrEmpty(expectedConfig.UniqueKey) || expectedConfig.UniqueKey != "Y")
-            {
-                _logger.LogDebug("UK 검사 스킵: {TableId}.{FieldName} (UK설정='{UniqueKey}')", 
-                    expectedConfig.TableId, expectedConfig.FieldName, expectedConfig.UniqueKey ?? "null");
-                return true; // 검사 대상이 아니므로 통과
-            }
-
-            try
-            {
-                _logger.LogInformation("UK 검사 시작: {TableId}.{FieldName}", expectedConfig.TableId, expectedConfig.FieldName);
-
-                // 테이블명을 TableId로부터 찾기
-                var featureClassInfo = await _gdalService.FindFeatureClassByTableIdAsync(gdbPath, expectedConfig.TableId);
-                if (featureClassInfo == null || !featureClassInfo.Exists)
-                {
-                    _logger.LogWarning("UK 검사 실패: 테이블 {TableId}에 해당하는 FeatureClass를 찾을 수 없습니다", expectedConfig.TableId);
-                    return false;
-                }
-
-                // 실제 UK 검수 수행
-                var ukResult = await _uniqueKeyValidator.ValidateUniqueKeyAsync(gdbPath, featureClassInfo.Name, expectedConfig.FieldName);
-                
-                if (ukResult.IsValid)
-                {
-                    _logger.LogInformation("UK 검사 통과: {TableId}.{FieldName} - 중복값 없음", 
-                        expectedConfig.TableId, expectedConfig.FieldName);
-                    return true;
-                }
-                else
-                {
-                    _logger.LogWarning("UK 검사 실패: {TableId}.{FieldName} - {DuplicateCount}개 중복값 발견", 
-                        expectedConfig.TableId, expectedConfig.FieldName, ukResult.DuplicateValues);
-                    
-                    // 중복값 상세 정보 로깅
-                    foreach (var duplicate in ukResult.Duplicates.Take(5)) // 상위 5개만 로깅
-                    {
-                        _logger.LogDebug("중복값: '{Value}'", duplicate.Value);
-                    }
-                    
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "UK 검사 중 오류 발생: {TableId}.{FieldName}", expectedConfig.TableId, expectedConfig.FieldName);
-                return false; // 오류 발생 시 실패로 처리
-            }
-        }
-
-        /// <summary>
-        /// Foreign Key 제약을 검증합니다 (실제 참조 무결성 검사)
-        /// </summary>
-        private async Task<bool> ValidateForeignKeyAsync(SchemaConfig expectedConfig, DetailedFieldInfo actualField, string gdbPath)
-        {
-            // FK 설정이 없으면 검사 안함
-            if (string.IsNullOrEmpty(expectedConfig.ForeignKey) || expectedConfig.ForeignKey != "Y")
-            {
-                return true; // 검사 대상이 아니므로 통과
-            }
-
-            // FK가 설정된 경우 참조 테이블과 컬럼 정보 확인
-            if (string.IsNullOrEmpty(expectedConfig.ReferenceTable) || string.IsNullOrEmpty(expectedConfig.ReferenceColumn))
-            {
-                _logger.LogWarning("FK 설정 오류: {FieldName} - 참조테이블 또는 참조컬럼 정보 없음", expectedConfig.FieldName);
-                return false; // FK 설정이 불완전하면 오류
-            }
-
-            try
-            {
-                _logger.LogInformation("FK 검사 시작: {TableId}.{FieldName} -> {RefTable}.{RefColumn}", 
-                    expectedConfig.TableId, expectedConfig.FieldName, expectedConfig.ReferenceTable, expectedConfig.ReferenceColumn);
-
-                // 소스 테이블명을 TableId로부터 찾기
-                var sourceFeatureClassInfo = await _gdalService.FindFeatureClassByTableIdAsync(gdbPath, expectedConfig.TableId);
-                if (sourceFeatureClassInfo == null || !sourceFeatureClassInfo.Exists)
-                {
-                    _logger.LogWarning("FK 검사 실패: 소스 테이블 {TableId}에 해당하는 FeatureClass를 찾을 수 없습니다", expectedConfig.TableId);
-                    return false;
-                }
-
-                // 참조 테이블명을 TableId로부터 찾기 (ReferenceTable이 TableId일 수 있음)
-                var referenceFeatureClassInfo = await _gdalService.FindFeatureClassByTableIdAsync(gdbPath, expectedConfig.ReferenceTable);
-                string referenceTableName;
-                
-                if (referenceFeatureClassInfo != null && referenceFeatureClassInfo.Exists)
-                {
-                    // TableId로 찾은 경우
-                    referenceTableName = referenceFeatureClassInfo.Name;
-                }
-                else
-                {
-                    // 직접 테이블명으로 사용
-                    referenceTableName = expectedConfig.ReferenceTable;
-                }
-
-                // 실제 FK 검수 수행
-                var fkResult = await _foreignKeyValidator.ValidateForeignKeyAsync(
-                    gdbPath, 
-                    sourceFeatureClassInfo.Name, 
-                    expectedConfig.FieldName,
-                    referenceTableName,
-                    expectedConfig.ReferenceColumn);
-
-                if (fkResult.IsValid)
-                {
-                    _logger.LogInformation("FK 검사 통과: {TableId}.{FieldName} -> {RefTable}.{RefColumn} - 참조 무결성 유지", 
-                        expectedConfig.TableId, expectedConfig.FieldName, expectedConfig.ReferenceTable, expectedConfig.ReferenceColumn);
-                    return true;
-                }
-                else
-                {
-                    _logger.LogWarning("FK 검사 실패: {TableId}.{FieldName} -> {RefTable}.{RefColumn} - {OrphanCount}개 고아 레코드 발견", 
-                        expectedConfig.TableId, expectedConfig.FieldName, expectedConfig.ReferenceTable, expectedConfig.ReferenceColumn, fkResult.OrphanCount);
-                    
-                    // 고아 레코드 상세 정보 로깅 (상위 5개만)
-                    foreach (var orphan in fkResult.OrphanValues.Take(5))
-                    {
-                        _logger.LogDebug("고아 레코드: Value='{Value}'", orphan);
-                    }
-                    
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "FK 검사 중 오류 발생: {TableId}.{FieldName} -> {RefTable}.{RefColumn}", 
-                    expectedConfig.TableId, expectedConfig.FieldName, expectedConfig.ReferenceTable, expectedConfig.ReferenceColumn);
-                return false; // 오류 발생 시 실패로 처리
-            }
-        } 
        /// <summary>
         /// 스키마 설정 파일을 로드합니다
         /// </summary>

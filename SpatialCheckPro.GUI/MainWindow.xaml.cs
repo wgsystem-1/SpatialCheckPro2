@@ -173,26 +173,6 @@ namespace SpatialCheckPro.GUI
             return null;
         }
 
-        /// <summary>
-        /// 성능 설정 변경 이벤트 핸들러
-        /// </summary>
-        private void OnPerformanceSettingsChanged(object? sender, Views.PerformanceSettingsChangedEventArgs e)
-        {
-            try
-            {
-                if (_validationService != null)
-                {
-                    // SimpleValidationService의 PerformanceSettings 업데이트
-                    _validationService.UpdatePerformanceSettings(e.EnableParallelProcessing, e.MaxParallelism, e.BatchSize);
-                    _logger?.LogInformation("성능 설정 업데이트: 병렬처리={ParallelProcessing}, 병렬도={Parallelism}, 배치크기={BatchSize}", 
-                        e.EnableParallelProcessing, e.MaxParallelism, e.BatchSize);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "성능 설정 업데이트 실패");
-            }
-        }
         private void InitializeDefaultConfigPaths()
         {
             var appDirectory = AppDomain.CurrentDomain.BaseDirectory;
@@ -524,6 +504,9 @@ namespace SpatialCheckPro.GUI
                 // 검수 시작 시간 초기화
                 progressView.ResetStartTime();
                 var startTime = DateTime.Now;
+                progressView.InitializeBatchFiles(new[] { _selectedFilePath! });
+                var singleFileName = Path.GetFileName(_selectedFilePath!);
+                progressView.UpdateCurrentFile(1, 1, singleFileName, _selectedFilePath);
                 
                 // 소요시간 업데이트 타이머
                 var progressTimer = new DispatcherTimer(DispatcherPriority.Normal);
@@ -627,6 +610,7 @@ namespace SpatialCheckPro.GUI
                         token);
                 });
 
+                progressView.MarkFileCompleted(1, _currentValidationResult.IsValid, _currentValidationResult.ErrorCount, _currentValidationResult.WarningCount);
                 progressView.UpdateProgress(100, "검수 완료");
                 progressTimer.Stop();
                 
@@ -773,6 +757,8 @@ namespace SpatialCheckPro.GUI
                 return;
             }
 
+            Dispatcher.Invoke(() => progressView.InitializeBatchFiles(targets), DispatcherPriority.Normal);
+
             _currentProgressView = progressView;
             _validationCancellationTokenSource = new System.Threading.CancellationTokenSource();
             _isValidationRunning = true;
@@ -883,7 +869,7 @@ namespace SpatialCheckPro.GUI
                     
                     Dispatcher.Invoke(() =>
                     {
-                        progressView.UpdateCurrentFile(i + 1, total, fileName);
+                        progressView.UpdateCurrentFile(i + 1, total, fileName, gdbPath);
                         _stageSummaryCollectionViewModel.Reset();
                     });
 
@@ -902,6 +888,8 @@ namespace SpatialCheckPro.GUI
                     totalErrors += vr.ErrorCount;
                     totalWarnings += vr.WarningCount;
                     if (vr.IsValid) successCount++; else failCount++;
+
+                    Dispatcher.Invoke(() => progressView.MarkFileCompleted(i + 1, vr.IsValid, vr.ErrorCount, vr.WarningCount));
 
                     // 각 파일 검수 완료 후 파일별 캐시 정리 (성능 최적화: 메모리 누적 방지)
                     // 검수 완료 확인 후 해당 파일의 캐시만 정리하여 다른 파일 검수에 영향 없도록 함

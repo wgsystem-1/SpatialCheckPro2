@@ -113,8 +113,8 @@ namespace SpatialCheckPro.Processors.RelationChecks
                             {
                                 AddDetailedError(result, "PolygonBoundaryMatch", 
                                     "인접한 도로경계면이 없습니다.", 
-                                    config.MainTableName, lineFeature.GetFID().ToString(), 
-                                    geometry: lineGeom);
+                                    config.RelatedTableId, lineFeature.GetFID().ToString(), 
+                                    geometry: lineGeom, tableDisplayName: config.RelatedTableName);
                             }
                             return;
                         }
@@ -187,11 +187,11 @@ namespace SpatialCheckPro.Processors.RelationChecks
                                 using var errPt = new Geometry(wkbGeometryType.wkbPoint);
                                 errPt.AddPoint(errX, errY, 0);
                                 
-                                AddDetailedError(result, "PolygonBoundaryMatch", 
+                                AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_023", 
                                     $"도로경계선의 정점이 도로경계면의 정점과 일치하지 않음", 
-                                    config.MainTableName, lineFeature.GetFID().ToString(), 
+                                    config.RelatedTableId, lineFeature.GetFID().ToString(), 
                                     $"불일치 정점: ({errX}, {errY})",
-                                    geometry: errPt);
+                                    geometry: errPt, tableDisplayName: config.RelatedTableName);
                             }
                         }
                     }

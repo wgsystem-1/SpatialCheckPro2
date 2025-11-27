@@ -181,26 +181,47 @@ namespace SpatialCheckPro.GUI.Views
         {
             if (_validationResult == null) return;
 
-            // 지오메트리 오류 타입 집계
+            // 오류 타입별 집계 (RuleID 기준)
             var errorTypes = new Dictionary<string, int>();
             
+            // 1. 지오메트리 오류 집계 (표준 ID 매핑 사용)
             if (_validationResult.GeometryCheckResult?.GeometryResults != null)
             {
                 foreach (var result in _validationResult.GeometryCheckResult.GeometryResults)
                 {
-                    if (result.DuplicateCount > 0) AddOrUpdate(errorTypes, "중복", result.DuplicateCount);
-                    if (result.OverlapCount > 0) AddOrUpdate(errorTypes, "겹침", result.OverlapCount);
-                    if (result.SelfIntersectionCount > 0) AddOrUpdate(errorTypes, "자체교차", result.SelfIntersectionCount);
-                    if (result.SelfOverlapCount > 0) AddOrUpdate(errorTypes, "자기중첩", result.SelfOverlapCount);
-                    if (result.SliverCount > 0) AddOrUpdate(errorTypes, "슬리버", result.SliverCount);
-                    if (result.SpikeCount > 0) AddOrUpdate(errorTypes, "스파이크", result.SpikeCount);
-                    if (result.ShortObjectCount > 0) AddOrUpdate(errorTypes, "짧은객체", result.ShortObjectCount);
-                    if (result.SmallAreaCount > 0) AddOrUpdate(errorTypes, "작은면적", result.SmallAreaCount);
-                    if (result.PolygonInPolygonCount > 0) AddOrUpdate(errorTypes, "홀", result.PolygonInPolygonCount);
-                    if (result.MinPointCount > 0) AddOrUpdate(errorTypes, "최소정점", result.MinPointCount);
-                    if (result.UndershootCount > 0) AddOrUpdate(errorTypes, "언더슛", result.UndershootCount);
-                    if (result.OvershootCount > 0) AddOrUpdate(errorTypes, "오버슛", result.OvershootCount);
-                    if (result.BasicValidationErrorCount > 0) AddOrUpdate(errorTypes, "기본검수", result.BasicValidationErrorCount);
+                    if (result.DuplicateCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_001", result.DuplicateCount); // 중복
+                    if (result.OverlapCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_002", result.OverlapCount); // 겹침
+                    if (result.SelfIntersectionCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_003", result.SelfIntersectionCount); // 자체꼬임
+                    if (result.SelfOverlapCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_010", result.SelfOverlapCount); // 자기중첩
+                    if (result.SliverCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_004", result.SliverCount); // 슬리버
+                    if (result.SpikeCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_009", result.SpikeCount); // 스파이크
+                    if (result.ShortObjectCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_005", result.ShortObjectCount); // 짧은객체
+                    if (result.SmallAreaCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_006", result.SmallAreaCount); // 작은면적
+                    if (result.PolygonInPolygonCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_007", result.PolygonInPolygonCount); // 홀 오류
+                    if (result.MinPointCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_008", result.MinPointCount); // 최소정점
+                    if (result.UndershootCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_011", result.UndershootCount); // 언더슛
+                    if (result.OvershootCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_012", result.OvershootCount); // 오버슛
+                    if (result.BasicValidationErrorCount > 0) AddOrUpdate(errorTypes, "LOG_TOP_GEO_000", result.BasicValidationErrorCount); // 기타 기본오류
+                }
+            }
+
+            // 2. 속성 관계 오류 집계
+            if (_validationResult.AttributeRelationCheckResult?.Errors != null)
+            {
+                foreach (var error in _validationResult.AttributeRelationCheckResult.Errors)
+                {
+                    var ruleId = !string.IsNullOrWhiteSpace(error.ErrorCode) ? error.ErrorCode : "ATTR_UNKNOWN";
+                    AddOrUpdate(errorTypes, ruleId, 1);
+                }
+            }
+
+            // 3. 공간 관계 오류 집계
+            if (_validationResult.RelationCheckResult?.Errors != null)
+            {
+                foreach (var error in _validationResult.RelationCheckResult.Errors)
+                {
+                    var ruleId = !string.IsNullOrWhiteSpace(error.ErrorCode) ? error.ErrorCode : "REL_UNKNOWN";
+                    AddOrUpdate(errorTypes, ruleId, 1);
                 }
             }
 
@@ -212,7 +233,7 @@ namespace SpatialCheckPro.GUI.Views
                 .Take(5)
                 .Select(kv => new ErrorTypeItem
                 {
-                    ErrorType = kv.Key,
+                    ErrorType = kv.Key, // RuleID 표시
                     Count = kv.Value,
                     Percentage = totalErrors > 0 ? (kv.Value * 100.0 / totalErrors) : 0,
                     BarWidth = maxCount > 0 ? (kv.Value * 200.0 / maxCount) : 0

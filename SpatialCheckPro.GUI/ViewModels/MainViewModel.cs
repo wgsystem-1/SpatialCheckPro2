@@ -24,6 +24,18 @@ namespace SpatialCheckPro.GUI.ViewModels
         private string? _selectedFilePath;
 
         [ObservableProperty]
+        private string? _currentValidationFileName;
+
+        [ObservableProperty]
+        private string? _currentValidationDirectory;
+
+        [ObservableProperty]
+        private int _currentFileIndex = 0;
+
+        [ObservableProperty]
+        private int _totalFiles = 0;
+
+        [ObservableProperty]
         private List<string>? _selectedFilePaths;
 
         // 검수 설정 파일 경로들

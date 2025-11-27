@@ -15,6 +15,11 @@ namespace SpatialCheckPro.Models
         public string TableId { get; set; } = string.Empty;
 
         /// <summary>
+        /// 테이블 명칭
+        /// </summary>
+        public string TableName { get; set; } = string.Empty;
+
+        /// <summary>
         /// 컬럼명칭 (영문)
         /// </summary>
         public string ColumnName { get; set; } = string.Empty;
