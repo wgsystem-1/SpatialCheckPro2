@@ -59,6 +59,16 @@ namespace SpatialCheckPro.Models
         public string? SourceGlobalID { get; set; }
 
         /// <summary>
+        /// 관련 테이블 ID (관계 검수용)
+        /// </summary>
+        public string? RelatedTableId { get; set; }
+
+        /// <summary>
+        /// 관련 테이블명 (관계 검수용, 한글명)
+        /// </summary>
+        public string? RelatedTableName { get; set; }
+
+        /// <summary>
         /// 요약 메시지
         /// </summary>
         public string Message { get; set; } = string.Empty;

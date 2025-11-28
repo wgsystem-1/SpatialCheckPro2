@@ -318,12 +318,103 @@ namespace SpatialCheckPro.Services
                         if (geometryRef != null && !geometryRef.IsEmpty())
                         {
                             var clonedGeom = geometryRef.Clone();
-                            var envelope = new Envelope();
-                            clonedGeom.GetEnvelope(envelope);
-                            double centerX = (envelope.MinX + envelope.MaxX) / 2.0;
-                            double centerY = (envelope.MinY + envelope.MaxY) / 2.0;
+                            var geomType = clonedGeom.GetGeometryType();
+                            var flatType = (wkbGeometryType)((int)geomType & 0xFF);
 
-                            _logger.LogDebug("FGDB 지오메트리 추출: {Table}:{OID} -> ({X:F3},{Y:F3})", tableId, objectId, centerX, centerY);
+                            double centerX = 0, centerY = 0;
+
+                            // 지오메트리 타입별 좌표 추출
+                            if (flatType == wkbGeometryType.wkbPoint)
+                            {
+                                // Point: 그대로 사용
+                                centerX = clonedGeom.GetX(0);
+                                centerY = clonedGeom.GetY(0);
+                            }
+                            else if (flatType == wkbGeometryType.wkbMultiPoint)
+                            {
+                                // MultiPoint: 첫 번째 점 사용
+                                if (clonedGeom.GetGeometryCount() > 0)
+                                {
+                                    var firstPoint = clonedGeom.GetGeometryRef(0);
+                                    if (firstPoint != null)
+                                    {
+                                        centerX = firstPoint.GetX(0);
+                                        centerY = firstPoint.GetY(0);
+                                    }
+                                }
+                            }
+                            else if (flatType == wkbGeometryType.wkbLineString)
+                            {
+                                // LineString: 중간 정점 사용
+                                int pointCount = clonedGeom.GetPointCount();
+                                if (pointCount > 0)
+                                {
+                                    int midIndex = pointCount / 2;
+                                    centerX = clonedGeom.GetX(midIndex);
+                                    centerY = clonedGeom.GetY(midIndex);
+                                }
+                            }
+                            else if (flatType == wkbGeometryType.wkbMultiLineString)
+                            {
+                                // MultiLineString: 첫 번째 LineString의 중간 정점
+                                if (clonedGeom.GetGeometryCount() > 0)
+                                {
+                                    var firstLine = clonedGeom.GetGeometryRef(0);
+                                    if (firstLine != null)
+                                    {
+                                        int pointCount = firstLine.GetPointCount();
+                                        if (pointCount > 0)
+                                        {
+                                            int midIndex = pointCount / 2;
+                                            centerX = firstLine.GetX(midIndex);
+                                            centerY = firstLine.GetY(midIndex);
+                                        }
+                                    }
+                                }
+                            }
+                            else if (flatType == wkbGeometryType.wkbPolygon || flatType == wkbGeometryType.wkbMultiPolygon)
+                            {
+                                // Polygon/MultiPolygon: PointOnSurface (내부 보장)
+                                try
+                                {
+                                    using var pos = clonedGeom.PointOnSurface();
+                                    if (pos != null && !pos.IsEmpty())
+                                    {
+                                        centerX = pos.GetX(0);
+                                        centerY = pos.GetY(0);
+                                    }
+                                }
+                                catch
+                                {
+                                    // PointOnSurface 실패 시 외곽 링 중간점
+                                    OSGeo.OGR.Geometry? targetPoly = clonedGeom;
+                                    if (flatType == wkbGeometryType.wkbMultiPolygon && clonedGeom.GetGeometryCount() > 0)
+                                    {
+                                        targetPoly = clonedGeom.GetGeometryRef(0);
+                                    }
+                                    if (targetPoly != null && targetPoly.GetGeometryCount() > 0)
+                                    {
+                                        var ring = targetPoly.GetGeometryRef(0);
+                                        if (ring != null && ring.GetPointCount() > 0)
+                                        {
+                                            int midIndex = ring.GetPointCount() / 2;
+                                            centerX = ring.GetX(midIndex);
+                                            centerY = ring.GetY(midIndex);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 좌표 추출 실패 시 Envelope 중심 사용 (폴백)
+                            if (centerX == 0 && centerY == 0)
+                            {
+                                var envelope = new Envelope();
+                                clonedGeom.GetEnvelope(envelope);
+                                centerX = (envelope.MinX + envelope.MaxX) / 2.0;
+                                centerY = (envelope.MinY + envelope.MaxY) / 2.0;
+                            }
+
+                            _logger.LogDebug("FGDB 지오메트리 추출: {Table}:{OID} -> ({X:F3},{Y:F3}) [{GeomType}]", tableId, objectId, centerX, centerY, flatType);
                             feature.Dispose();
                             dataSource.Dispose();
                             return (clonedGeom, centerX, centerY, geometryTypeName);

@@ -25,21 +25,47 @@ namespace SpatialCheckPro.Utils
         }
 
         /// <summary>
-        /// LineString의 중점 추출
+        /// LineString 또는 MultiLineString의 중점 추출
+        /// - LineString: 중간 정점
+        /// - MultiLineString: 첫 번째 LineString의 중간 정점
         /// </summary>
         public static (double X, double Y) GetLineStringMidpoint(OSGeo.OGR.Geometry lineString)
         {
             if (lineString == null || lineString.IsEmpty())
                 return (0, 0);
 
-            if (lineString.GetGeometryType() != wkbGeometryType.wkbLineString)
-                return GetEnvelopeCenter(lineString);
+            var geomType = lineString.GetGeometryType();
+            var flatType = (wkbGeometryType)((int)geomType & 0xFF);
 
-            int pointCount = lineString.GetPointCount();
-            if (pointCount == 0) return (0, 0);
+            // LineString: 중간 정점 사용
+            if (flatType == wkbGeometryType.wkbLineString)
+            {
+                int pointCount = lineString.GetPointCount();
+                if (pointCount == 0) return (0, 0);
+                int midIndex = pointCount / 2;
+                return (lineString.GetX(midIndex), lineString.GetY(midIndex));
+            }
 
-            int midIndex = pointCount / 2;
-            return (lineString.GetX(midIndex), lineString.GetY(midIndex));
+            // MultiLineString: 첫 번째 LineString의 중간 정점
+            if (flatType == wkbGeometryType.wkbMultiLineString)
+            {
+                if (lineString.GetGeometryCount() > 0)
+                {
+                    var firstLine = lineString.GetGeometryRef(0);
+                    if (firstLine != null)
+                    {
+                        int pointCount = firstLine.GetPointCount();
+                        if (pointCount > 0)
+                        {
+                            int midIndex = pointCount / 2;
+                            return (firstLine.GetX(midIndex), firstLine.GetY(midIndex));
+                        }
+                    }
+                }
+            }
+
+            // 기타: 첫 번째 정점 시도, 실패 시 Envelope 중심
+            return GetFirstVertex(lineString);
         }
 
         /// <summary>

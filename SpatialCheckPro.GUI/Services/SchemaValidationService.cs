@@ -113,6 +113,14 @@ namespace SpatialCheckPro.GUI.Services
                 var processedTableCount = 0;
                 var totalTableCount = validTableIds.Count;
 
+                // 테이블명 매핑 딕셔너리 생성
+                var tableNameMap = validTables
+                    .Where(t => !string.IsNullOrWhiteSpace(t.TableId))
+                    .ToDictionary(
+                        t => t.TableId, 
+                        t => !string.IsNullOrWhiteSpace(t.TableName) ? t.TableName : t.TableId,
+                        StringComparer.OrdinalIgnoreCase);
+
                 foreach (var tableId in validTableIds)
                 {
                     try
@@ -149,8 +157,11 @@ namespace SpatialCheckPro.GUI.Services
                         
                         _logger.LogInformation("테이블 {TableId} 스키마 검수 시작 - 설정 필드 {FieldCount}개", tableId, tableSchemaConfigs.Count);
 
+                        // 테이블명 조회
+                        var tableName = tableNameMap.TryGetValue(tableId, out var name) ? name : tableId;
+
                         // 필드별 스키마 검수 수행
-                        await ValidateTableSchemaAsync(tableId, actualSchema, tableSchemaConfigs, result, gdbPath);
+                        await ValidateTableSchemaAsync(tableId, tableName, actualSchema, tableSchemaConfigs, result, gdbPath);
                         
                         _logger.LogInformation("테이블 {TableId} 스키마 검수 완료", tableId);
                         
@@ -223,13 +234,14 @@ namespace SpatialCheckPro.GUI.Services
         /// </summary>
         private async Task ValidateTableSchemaAsync(
             string tableId,
+            string tableName,
             DetailedSchemaInfo actualSchema,
             List<SchemaConfig> expectedConfigs,
             SchemaCheckResult result,
             string gdbPath)
         {
-            _logger.LogDebug("테이블 {TableId} 스키마 검수 시작 - 실제 필드 {ActualCount}개, 설정 필드 {ExpectedCount}개", 
-                tableId, actualSchema.Fields.Count, expectedConfigs.Count);
+            _logger.LogDebug("테이블 {TableId}({TableName}) 스키마 검수 시작 - 실제 필드 {ActualCount}개, 설정 필드 {ExpectedCount}개", 
+                tableId, tableName, actualSchema.Fields.Count, expectedConfigs.Count);
 
             var processedFieldCount = 0;
             var totalFieldCount = expectedConfigs.Count;
@@ -252,6 +264,7 @@ namespace SpatialCheckPro.GUI.Services
                     var schemaItem = new SchemaValidationItem
                     {
                         TableId = tableId,
+                        TableName = tableName,
                         ColumnName = expectedConfig.FieldName,
                         ExpectedDataType = expectedConfig.DataType,
                         ExpectedLength = expectedConfig.Length.ToString(),
@@ -318,6 +331,11 @@ namespace SpatialCheckPro.GUI.Services
 
                         result.Errors.Add(new ValidationError 
                         { 
+                            ErrorCode = "LOG_CNC_SCH_001",
+                            TableId = tableId,
+                            TableName = tableName,
+                            FieldName = expectedConfig.FieldName,
+                            SourceTable = tableId,
                             Message = $"{tableId}.{expectedConfig.FieldName}: {string.Join(", ", errorDetails)}" 
                         });
                     }
@@ -330,6 +348,11 @@ namespace SpatialCheckPro.GUI.Services
                     result.ErrorCount++;
                     result.Errors.Add(new ValidationError 
                     { 
+                        ErrorCode = "LOG_CNC_SCH_001",
+                        TableId = tableId,
+                        TableName = tableName,
+                        FieldName = expectedConfig.FieldName,
+                        SourceTable = tableId,
                         Message = $"{tableId}.{expectedConfig.FieldName}: 검수 중 오류 - {ex.Message}" 
                     });
                     processedFieldCount++;
@@ -357,6 +380,7 @@ namespace SpatialCheckPro.GUI.Services
                     var item = new SchemaValidationItem
                     {
                         TableId = tableId,
+                        TableName = tableName,
                         ColumnName = uf.Name,
                         ColumnKoreanName = string.Empty,
                         ActualDataType = uf.DataType,
@@ -379,7 +403,15 @@ namespace SpatialCheckPro.GUI.Services
 
                     result.SchemaResults.Add(item);
                     result.ErrorCount++;
-                    result.Errors.Add(new ValidationError { Message = $"{tableId}.{uf.Name}: 스키마 설정에 정의되지 않은 컬럼입니다" });
+                    result.Errors.Add(new ValidationError 
+                    { 
+                        ErrorCode = "LOG_CNC_SCH_002",
+                        TableId = tableId,
+                        TableName = tableName,
+                        FieldName = uf.Name,
+                        SourceTable = tableId,
+                        Message = $"{tableId}.{uf.Name}: 스키마 설정에 정의되지 않은 컬럼입니다" 
+                    });
                 }
             }
             catch (Exception ex)

@@ -440,6 +440,8 @@ namespace SpatialCheckPro.Services
                         Severity = string.Empty,
                         Status = string.Empty,
                         RuleId = candidateRuleId,
+                        TableId = geometryResult.TableId ?? string.Empty,
+                        TableName = geometryResult.TableName ?? string.Empty,
                         SourceClass = geometryResult.TableId ?? "Unknown",
                         SourceOID = ParseSourceOID(errorDetail.ObjectId),
                         SourceGlobalID = null,
@@ -491,6 +493,12 @@ namespace SpatialCheckPro.Services
                     ? checkResult.CheckId
                     : $"RELATION_CHECK_{checkResult.CheckId}";
 
+                // 관련 테이블 정보 추출
+                var relatedTableId = error.TargetTable 
+                    ?? error.Metadata?.GetValueOrDefault("RelatedTableId")?.ToString()
+                    ?? error.Metadata?.GetValueOrDefault("RelatedTable")?.ToString();
+                var relatedTableName = error.Metadata?.GetValueOrDefault("RelatedTableName")?.ToString();
+
                 var qcError = new QcError
                 {
                     GlobalID = Guid.NewGuid().ToString(),
@@ -499,9 +507,13 @@ namespace SpatialCheckPro.Services
                     Severity = string.Empty,
                     Status = string.Empty,
                     RuleId = relationRuleId,
-                    SourceClass = error.TableName ?? "Unknown",
+                    TableId = error.TableId ?? error.SourceTable ?? string.Empty,
+                    TableName = error.TableName ?? string.Empty,
+                    SourceClass = error.TableId ?? error.SourceTable ?? "Unknown",
                     SourceOID = ParseSourceOID(error.FeatureId),
-                    SourceGlobalID = null, // 필요시 추후 설정
+                    SourceGlobalID = null,
+                    RelatedTableId = relatedTableId,
+                    RelatedTableName = relatedTableName,
                     Message = error.Message,
                     DetailsJSON = JsonSerializer.Serialize(new
                     {
@@ -509,7 +521,8 @@ namespace SpatialCheckPro.Services
                         CheckName = checkResult.CheckName,
                         ErrorSeverity = error.Severity.ToString(),
                         Location = error.Location,
-                        RelatedTable = error.Metadata?.GetValueOrDefault("RelatedTable"),
+                        RelatedTable = relatedTableId,
+                        RelatedTableName = relatedTableName,
                         RelatedFeatureId = error.Metadata?.GetValueOrDefault("RelatedFeatureId"),
                         RelationType = error.Metadata?.GetValueOrDefault("RelationType"),
                         Metadata = error.Metadata
@@ -714,6 +727,17 @@ namespace SpatialCheckPro.Services
                     ["Details"] = e.Details
                 };
 
+                // TableId, TableName 추출
+                var tableId = e.TableId ?? e.SourceTable ?? string.Empty;
+                var tableName = e.TableName ?? string.Empty;
+                
+                // RelatedTableId, RelatedTableName 추출
+                var relatedTableId = e.TargetTable 
+                    ?? e.Metadata?.GetValueOrDefault("RelatedTableId")?.ToString()
+                    ?? e.Metadata?.GetValueOrDefault("RelatedTable")?.ToString()
+                    ?? string.Empty;
+                var relatedTableName = e.Metadata?.GetValueOrDefault("RelatedTableName")?.ToString() ?? string.Empty;
+
                 var qc = new QcError
                 {
                     GlobalID = Guid.NewGuid().ToString(),
@@ -723,9 +747,13 @@ namespace SpatialCheckPro.Services
                     Status = QcStatus.OPEN.ToString(),
                     // RuleId 생성 로직 개선: 표준 RuleId는 그대로 사용
                     RuleId = candidateRuleId,
+                    TableId = tableId,
+                    TableName = tableName,
                     SourceClass = sourceClass,
                     SourceOID = sourceOid,
                     SourceGlobalID = null,
+                    RelatedTableId = relatedTableId,
+                    RelatedTableName = relatedTableName,
                     X = e.X ?? 0,
                     Y = e.Y ?? 0,
                     GeometryWKT = e.GeometryWKT,

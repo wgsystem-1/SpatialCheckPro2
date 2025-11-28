@@ -444,11 +444,14 @@ namespace SpatialCheckPro.Services
                 throw new InvalidOperationException($"{layerName} Feature Class 생성 실패");
             }
 
-            // 단순화된 필드 정의 (필수 필드만)
+            // 단순화된 필드 정의 (SourceClass 제거, TableId/TableName으로 대체)
             var fields = new[]
             {
                 new { Name = "ErrCode", Type = FieldType.OFTString, Width = 32 },
-                new { Name = "SourceClass", Type = FieldType.OFTString, Width = 128 },
+                new { Name = "TableId", Type = FieldType.OFTString, Width = 128 },
+                new { Name = "TableName", Type = FieldType.OFTString, Width = 128 },
+                new { Name = "RelatedTableId", Type = FieldType.OFTString, Width = 128 },
+                new { Name = "RelatedTableName", Type = FieldType.OFTString, Width = 128 },
                 new { Name = "SourceOID", Type = FieldType.OFTInteger, Width = 0 },
                 new { Name = "Message", Type = FieldType.OFTString, Width = 1024 }
             };
@@ -493,9 +496,10 @@ namespace SpatialCheckPro.Services
             var fields = new[]
             {
                 new { Name = "ErrCode", Type = FieldType.OFTString, Width = 32 },
-                new { Name = "SourceClass", Type = FieldType.OFTString, Width = 128 },
                 new { Name = "TableId", Type = FieldType.OFTString, Width = 128 },
                 new { Name = "TableName", Type = FieldType.OFTString, Width = 128 },
+                new { Name = "RelatedTableId", Type = FieldType.OFTString, Width = 128 },
+                new { Name = "RelatedTableName", Type = FieldType.OFTString, Width = 128 },
                 new { Name = "SourceOID", Type = FieldType.OFTInteger, Width = 0 },
                 new { Name = "Message", Type = FieldType.OFTString, Width = 1024 }
             };

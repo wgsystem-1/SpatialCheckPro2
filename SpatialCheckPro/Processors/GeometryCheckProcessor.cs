@@ -587,11 +587,14 @@ namespace SpatialCheckPro.Processors
                                                 TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
+                                                X = midX,
+                                                Y = midY,
+                                                GeometryWKT = QcError.CreatePointWKT(midX, midY),
                                                 Metadata =
                                                 {
                                                     ["X"] = midX.ToString(),
                                                     ["Y"] = midY.ToString(),
-                                                    ["GeometryWkt"] = wkt
+                                                    ["OriginalGeometryWKT"] = wkt
                                                 }
                                             });
                                         }
@@ -616,11 +619,14 @@ namespace SpatialCheckPro.Processors
                                                 TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
+                                                X = centerX,
+                                                Y = centerY,
+                                                GeometryWKT = QcError.CreatePointWKT(centerX, centerY),
                                                 Metadata =
                                                 {
                                                     ["X"] = centerX.ToString(),
                                                     ["Y"] = centerY.ToString(),
-                                                    ["GeometryWkt"] = wkt
+                                                    ["OriginalGeometryWKT"] = wkt
                                                 }
                                             });
                                         }
@@ -649,12 +655,15 @@ namespace SpatialCheckPro.Processors
                                                 TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
+                                                X = x,
+                                                Y = y,
+                                                GeometryWKT = QcError.CreatePointWKT(x, y),
                                                 Metadata =
                                                 {
                                                     ["PolygonDebug"] = BuildPolygonDebugInfo(workingGeometry, minVertexCheck),
                                                     ["X"] = x.ToString(),
                                                     ["Y"] = y.ToString(),
-                                                    ["GeometryWkt"] = wkt
+                                                    ["OriginalGeometryWKT"] = wkt
                                                 }
                                             });
                                         }
@@ -682,11 +691,14 @@ namespace SpatialCheckPro.Processors
                                                 TableName = ResolveTableName(config.TableId, config.TableName),
                                                 FeatureId = fid.ToString(),
                                                 Severity = Models.Enums.ErrorSeverity.Error,
+                                                X = centerX,
+                                                Y = centerY,
+                                                GeometryWKT = QcError.CreatePointWKT(centerX, centerY),
                                                 Metadata =
                                                 {
                                                     ["X"] = centerX.ToString(),
                                                     ["Y"] = centerY.ToString(),
-                                                    ["GeometryWkt"] = wkt
+                                                    ["OriginalGeometryWKT"] = wkt
                                                 }
                                             });
                                         }
@@ -1119,12 +1131,15 @@ namespace SpatialCheckPro.Processors
                                             TableId = config.TableId,
                                             TableName = ResolveTableName(config.TableId, config.TableName),
                                             FeatureId = fid.ToString(),
-                                            Severity = Models.Enums.ErrorSeverity.Error, // 변경: 경고 제거, 모두 오류로 처리
+                                            Severity = Models.Enums.ErrorSeverity.Error,
+                                            X = midX,
+                                            Y = midY,
+                                            GeometryWKT = QcError.CreatePointWKT(midX, midY),
                                             Metadata =
                                             {
                                                 ["X"] = midX.ToString(),
                                                 ["Y"] = midY.ToString(),
-                                                ["GeometryWkt"] = wkt
+                                                ["OriginalGeometryWKT"] = wkt
                                             }
                                         });
                                     }
@@ -1135,10 +1150,8 @@ namespace SpatialCheckPro.Processors
                                     var area = workingGeometry.GetArea();
                                     if (area > 0 && area < _criteria.MinPolygonArea)
                                     {
-                                        var envelope = new Envelope();
-                                        workingGeometry.GetEnvelope(envelope);
-                                        double centerX = (envelope.MinX + envelope.MaxX) / 2.0;
-                                        double centerY = (envelope.MinY + envelope.MaxY) / 2.0;
+                                        // 폴리곤의 첫 번째 정점 사용
+                                        var (centerX, centerY) = GeometryCoordinateExtractor.GetFirstVertex(workingGeometry);
 
                                         workingGeometry.ExportToWkt(out string wkt);
 
@@ -1149,12 +1162,15 @@ namespace SpatialCheckPro.Processors
                                             TableId = config.TableId,
                                             TableName = ResolveTableName(config.TableId, config.TableName),
                                             FeatureId = fid.ToString(),
-                                            Severity = Models.Enums.ErrorSeverity.Warning,
+                                            Severity = Models.Enums.ErrorSeverity.Error,
+                                            X = centerX,
+                                            Y = centerY,
+                                            GeometryWKT = QcError.CreatePointWKT(centerX, centerY),
                                             Metadata =
                                             {
                                                 ["X"] = centerX.ToString(),
                                                 ["Y"] = centerY.ToString(),
-                                                ["GeometryWkt"] = wkt
+                                                ["OriginalGeometryWKT"] = wkt
                                             }
                                         });
                                     }
@@ -1169,19 +1185,8 @@ namespace SpatialCheckPro.Processors
                                             ? string.Empty
                                             : $" ({minVertexCheck.Detail})";
 
-                                        double x = 0, y = 0;
-                                        if (workingGeometry.GetPointCount() > 0)
-                                        {
-                                            x = workingGeometry.GetX(0);
-                                            y = workingGeometry.GetY(0);
-                                        }
-                                        else
-                                        {
-                                            var env = new Envelope();
-                                            workingGeometry.GetEnvelope(env);
-                                            x = (env.MinX + env.MaxX) / 2.0;
-                                            y = (env.MinY + env.MaxY) / 2.0;
-                                        }
+                                        // 첫 번째 정점 추출
+                                        var (x, y) = GeometryCoordinateExtractor.GetFirstVertex(workingGeometry);
 
                                         workingGeometry.ExportToWkt(out string wkt);
 
@@ -1193,12 +1198,15 @@ namespace SpatialCheckPro.Processors
                                             TableName = ResolveTableName(config.TableId, config.TableName),
                                             FeatureId = fid.ToString(),
                                             Severity = Models.Enums.ErrorSeverity.Error,
+                                            X = x,
+                                            Y = y,
+                                            GeometryWKT = QcError.CreatePointWKT(x, y),
                                             Metadata =
                                             {
                                                 ["PolygonDebug"] = BuildPolygonDebugInfo(workingGeometry, minVertexCheck),
                                                 ["X"] = x.ToString(),
                                                 ["Y"] = y.ToString(),
-                                                ["GeometryWkt"] = wkt
+                                                ["OriginalGeometryWKT"] = wkt
                                             }
                                         });
                                     }
@@ -1837,6 +1845,11 @@ namespace SpatialCheckPro.Processors
             }
         }
 
+        /// <summary>
+        /// 링의 고유 정점 수를 계산합니다 (tolerance 범위 내 중복 제거)
+        /// - HashSet을 사용하여 tolerance 범위 내 좌표는 동일한 정점으로 취급
+        /// - 폐합 폴리곤의 경우 첫점=마지막점이 중복으로 자동 제거됨
+        /// </summary>
         private int GetUniquePointCount(Geometry ring)
         {
             var tolerance = _ringClosureTolerance;
@@ -1851,19 +1864,8 @@ namespace SpatialCheckPro.Processors
                 unique.Add(key);
             }
 
-            if (unique.Count > 1)
-            {
-                var firstPoint = new double[3];
-                var lastPoint = new double[3];
-                ring.GetPoint(0, firstPoint);
-                ring.GetPoint(ring.GetPointCount() - 1, lastPoint);
-                if (ArePointsClose(firstPoint, lastPoint, tolerance))
-                {
-                    var lastKey = ((long)Math.Round(lastPoint[0] * scaledTolerance), (long)Math.Round(lastPoint[1] * scaledTolerance));
-                    unique.Remove(lastKey);
-                }
-            }
-
+            // HashSet은 이미 중복을 제거하므로 추가 처리 불필요
+            // 폐합 폴리곤(첫점=마지막점)의 경우 자동으로 1개로 카운트됨
             return unique.Count;
         }
 

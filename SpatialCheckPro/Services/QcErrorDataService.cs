@@ -303,17 +303,15 @@ namespace SpatialCheckPro.Services
 
                         // 필수 필드 설정
                         feature.SetField("ErrCode", qcError.ErrCode);
-                        feature.SetField("SourceClass", qcError.SourceClass);
                         feature.SetField("SourceOID", (int)qcError.SourceOID);
                         feature.SetField("Message", qcError.Message);
 
-                        // NoGeom 레이어라면 TableId/TableName도 함께 기록
-                        if (string.Equals(layerName, "QC_Errors_NoGeom", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var tableId = string.IsNullOrWhiteSpace(qcError.TableId) ? qcError.SourceClass : qcError.TableId;
-                            feature.SetField("TableId", tableId);
-                            feature.SetField("TableName", qcError.TableName ?? string.Empty);
-                        }
+                        // 선택적 필드 설정 (필드 존재 여부 확인 후 설정)
+                        var tableId = string.IsNullOrWhiteSpace(qcError.TableId) ? qcError.SourceClass : qcError.TableId;
+                        TrySetField(feature, featureDefn, "TableId", tableId);
+                        TrySetField(feature, featureDefn, "TableName", qcError.TableName ?? string.Empty);
+                        TrySetField(feature, featureDefn, "RelatedTableId", qcError.RelatedTableId ?? string.Empty);
+                        TrySetField(feature, featureDefn, "RelatedTableName", qcError.RelatedTableName ?? string.Empty);
 
                         // 포인트 지오메트리가 준비된 경우에만 지오메트리 설정
                         if (pointGeometryCandidate != null)
@@ -519,6 +517,10 @@ namespace SpatialCheckPro.Services
                         return successCount;
                     }
 
+                    // 기존 레이어에 새 필드가 없으면 동적으로 추가
+                    EnsureLayerFields(pointLayer);
+                    if (noGeomLayer != null) EnsureLayerFields(noGeomLayer);
+
                     // NoGeom 레이어는 없을 수 있으나, 필요 시에만 사용
                     pointLayer.StartTransaction();
                     noGeomLayer?.StartTransaction();
@@ -567,16 +569,17 @@ namespace SpatialCheckPro.Services
 
                             using var feature = new Feature(targetLayer.GetLayerDefn());
                             feature.SetField("ErrCode", qcError.ErrCode);
-                            feature.SetField("SourceClass", qcError.SourceClass);
                             feature.SetField("SourceOID", (int)qcError.SourceOID);
                             feature.SetField("Message", qcError.Message);
 
-                            if (string.Equals(targetLayer.GetName(), "QC_Errors_NoGeom", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var tableId = string.IsNullOrWhiteSpace(qcError.TableId) ? qcError.SourceClass : qcError.TableId;
-                                feature.SetField("TableId", tableId);
-                                feature.SetField("TableName", qcError.TableName ?? string.Empty);
-                            }
+                            // 모든 레이어에 TableId/TableName 기록
+                            // 선택적 필드 설정 (필드 존재 여부 확인 후 설정)
+                            var featureDefn = targetLayer.GetLayerDefn();
+                            var tableId = string.IsNullOrWhiteSpace(qcError.TableId) ? qcError.SourceClass : qcError.TableId;
+                            TrySetField(feature, featureDefn, "TableId", tableId);
+                            TrySetField(feature, featureDefn, "TableName", qcError.TableName ?? string.Empty);
+                            TrySetField(feature, featureDefn, "RelatedTableId", qcError.RelatedTableId ?? string.Empty);
+                            TrySetField(feature, featureDefn, "RelatedTableName", qcError.RelatedTableName ?? string.Empty);
 
                             if (pointGeometry != null)
                             {
@@ -712,21 +715,24 @@ namespace SpatialCheckPro.Services
                 var fieldDefn = new FieldDefn("ErrCode", FieldType.OFTString);
                 fieldDefn.SetWidth(32);
                 layer.CreateField(fieldDefn, 1);
-                              
-                fieldDefn = new FieldDefn("SourceClass", FieldType.OFTString);
-                fieldDefn.SetWidth(128);
-                layer.CreateField(fieldDefn, 1);
                 
-                if (layerName.Equals("QC_Errors_NoGeom", StringComparison.OrdinalIgnoreCase))
-                {
-                    var tableIdField = new FieldDefn("TableId", FieldType.OFTString);
-                    tableIdField.SetWidth(128);
-                    layer.CreateField(tableIdField, 1);
+                // TableId, TableName 필드 (SourceClass 대체 - 중복 제거)
+                var tableIdField = new FieldDefn("TableId", FieldType.OFTString);
+                tableIdField.SetWidth(128);
+                layer.CreateField(tableIdField, 1);
 
-                    var tableNameField = new FieldDefn("TableName", FieldType.OFTString);
-                    tableNameField.SetWidth(128);
-                    layer.CreateField(tableNameField, 1);
-                }
+                var tableNameField = new FieldDefn("TableName", FieldType.OFTString);
+                tableNameField.SetWidth(128);
+                layer.CreateField(tableNameField, 1);
+
+                // 관련 테이블 정보 (관계 검수용)
+                var relatedTableIdField = new FieldDefn("RelatedTableId", FieldType.OFTString);
+                relatedTableIdField.SetWidth(128);
+                layer.CreateField(relatedTableIdField, 1);
+
+                var relatedTableNameField = new FieldDefn("RelatedTableName", FieldType.OFTString);
+                relatedTableNameField.SetWidth(128);
+                layer.CreateField(relatedTableNameField, 1);
 
                 fieldDefn = new FieldDefn("SourceOID", FieldType.OFTInteger);
                 layer.CreateField(fieldDefn, 1);
@@ -1212,6 +1218,57 @@ namespace SpatialCheckPro.Services
                 _logger.LogError(ex, "원본 GDB에서 지오메트리 재추출 실패: {SourceClass}:{SourceOid}", sourceClass, sourceOid);
                 return (null, 0, 0, "Unknown");
             }
+        }
+
+        /// <summary>
+        /// 필드 존재 여부를 확인 후 값을 설정합니다 (없으면 무시)
+        /// </summary>
+        private static void TrySetField(Feature feature, FeatureDefn featureDefn, string fieldName, string value)
+        {
+            int fieldIndex = featureDefn.GetFieldIndex(fieldName);
+            if (fieldIndex >= 0)
+            {
+                feature.SetField(fieldName, value);
+            }
+        }
+
+        /// <summary>
+        /// 기존 레이어에 필요한 필드가 없으면 동적으로 추가합니다
+        /// </summary>
+        private void EnsureLayerFields(Layer layer)
+        {
+            if (layer == null) return;
+
+            var defn = layer.GetLayerDefn();
+            
+            // 추가할 필드 목록 (필드명, 너비)
+            var requiredFields = new (string Name, int Width)[]
+            {
+                ("TableId", 128),
+                ("TableName", 128),
+                ("RelatedTableId", 128),
+                ("RelatedTableName", 128)
+            };
+
+            foreach (var (fieldName, width) in requiredFields)
+            {
+                if (defn.GetFieldIndex(fieldName) < 0)
+                {
+                    try
+                    {
+                        var fieldDefn = new FieldDefn(fieldName, FieldType.OFTString);
+                        fieldDefn.SetWidth(width);
+                        layer.CreateField(fieldDefn, 1);
+                        _logger.LogDebug("레이어 {LayerName}에 필드 {FieldName} 추가됨", layer.GetName(), fieldName);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "레이어 {LayerName}에 필드 {FieldName} 추가 실패", layer.GetName(), fieldName);
+                    }
+                }
+            }
+
+            layer.SyncToDisk();
         }
     }
 }

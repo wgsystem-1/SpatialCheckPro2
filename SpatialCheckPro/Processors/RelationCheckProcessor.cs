@@ -408,7 +408,7 @@ namespace SpatialCheckPro.Processors
         /// <summary>
         /// 더 상세한 오류 정보를 포함한 오류 추가 (지오메트리 정보 포함)
         /// </summary>
-        private static void AddDetailedError(ValidationResult result, string errType, string message, string table = "", string objectId = "", string additionalInfo = "", Geometry? geometry = null, string tableDisplayName = "")
+        private static void AddDetailedError(ValidationResult result, string errType, string message, string table = "", string objectId = "", string additionalInfo = "", Geometry? geometry = null, string tableDisplayName = "", string relatedTableId = "", string relatedTableName = "")
         {
             result.IsValid = false;
             result.ErrorCount += 1;
@@ -416,7 +416,7 @@ namespace SpatialCheckPro.Processors
             var fullMessage = string.IsNullOrWhiteSpace(additionalInfo) ? message : $"{message} ({additionalInfo})";
             var (x, y) = ExtractCentroid(geometry);
             
-            result.Errors.Add(new ValidationError
+            var validationError = new ValidationError
             {
                 ErrorCode = errType,
                 Message = fullMessage,
@@ -425,12 +425,25 @@ namespace SpatialCheckPro.Processors
                 FeatureId = objectId,
                 SourceTable = string.IsNullOrWhiteSpace(table) ? null : table,
                 SourceObjectId = long.TryParse(objectId, NumberStyles.Any, CultureInfo.InvariantCulture, out var oid) ? oid : null,
+                TargetTable = string.IsNullOrWhiteSpace(relatedTableId) ? null : relatedTableId,
                 ErrorType = Models.Enums.ErrorType.Relation,                
                 Severity = Models.Enums.ErrorSeverity.Error,
                 X = x,
                 Y = y,
                 GeometryWKT = QcError.CreatePointWKT(x, y)
-            });
+            };
+
+            // 관련 테이블 정보를 Metadata에 추가
+            if (!string.IsNullOrWhiteSpace(relatedTableId))
+            {
+                validationError.Metadata["RelatedTableId"] = relatedTableId;
+            }
+            if (!string.IsNullOrWhiteSpace(relatedTableName))
+            {
+                validationError.Metadata["RelatedTableName"] = relatedTableName;
+            }
+
+            result.Errors.Add(validationError);
         }
 
         /// <summary>
@@ -715,15 +728,18 @@ namespace SpatialCheckPro.Processors
                     
                     // 선형 객체가 면형 객체 영역을 벗어나는지 검사
                     bool isWithinTolerance = false;
+                    Geometry? outsideGeom = null;
                     try
                     {
-                        // 1차: Difference로 경계 밖 길이 계산
-                        using var diff = lg.Difference(boundaryUnion);
+                        // 1차: Difference로 경계 밖 부분 계산
+                        var diff = lg.Difference(boundaryUnion);
                         double outsideLength = 0.0;
                         if (diff != null && !diff.IsEmpty())
                         {
                             outsideLength = Math.Abs(diff.Length());
+                            outsideGeom = diff.Clone(); // 벗어난 부분 저장
                         }
+                        diff?.Dispose();
 
                         // 2차: 경계면 경계선과의 거리 기반 허용오차 보정
                         if (outsideLength > 0 && tolerance > 0)
@@ -749,15 +765,19 @@ namespace SpatialCheckPro.Processors
                     if (!isWithinTolerance)
                     {
                         _logger.LogDebug("도로중심선 오류 검출: OID={OID}, ROAD_SE={RoadSe} - 허용오차를 초과하여 경계면을 벗어남", oid, roadSe);
+                        // 벗어난 부분(outsideGeom)이 있으면 해당 위치를, 없으면 전체 선형 위치 사용
+                        var errorGeom = (outsideGeom != null && !outsideGeom.IsEmpty()) ? outsideGeom : lg;
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021", 
                             "도로중심선이 도로경계면을 허용오차를 초과하여 벗어났습니다", 
                             config.RelatedTableId, oid, 
-                            $"ROAD_SE={roadSe}, 허용오차={tolerance}m", lg, config.RelatedTableName);
+                            $"ROAD_SE={roadSe}, 허용오차={tolerance}m", errorGeom, config.RelatedTableName,
+                            config.MainTableId, config.MainTableName);
                     }
                     else
                     {
                         _logger.LogDebug("도로중심선 정상: OID={OID}, ROAD_SE={RoadSe} - 허용오차 내에서 경계면 내부에 있음", oid, roadSe);
                     }
+                    outsideGeom?.Dispose();
                 }
             }
             
@@ -865,7 +885,8 @@ namespace SpatialCheckPro.Processors
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_025", 
                             $"면형도로시설의 버텍스가 도로경계면의 버텍스와 일치하지 않습니다", 
                             config.MainTableId, oid, 
-                            $"PG_RDFC_SE={code}, 허용오차={tolerance}m", pg, config.MainTableName);
+                            $"PG_RDFC_SE={code}, 허용오차={tolerance}m", pg, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
                 }
             }
@@ -1906,7 +1927,8 @@ namespace SpatialCheckPro.Processors
                                 var connectedOidStr = candidate.Oid.ToString(CultureInfo.InvariantCulture);
                                 AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_002",
                                     $"연결된 등고선의 높이값이 일치하지 않음: {currentAttrValue.Value:F2}m vs {connectedAttrValue.Value:F2}m (차이: {diff:F2}m)",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                     }
@@ -1935,7 +1957,8 @@ namespace SpatialCheckPro.Processors
                                 var connectedOidStr = candidate.Oid.ToString(CultureInfo.InvariantCulture);
                                 AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_002",
                                     $"연결된 등고선의 높이값이 일치하지 않음: {currentAttrValue.Value:F2}m vs {connectedAttrValue.Value:F2}m (차이: {diff:F2}m)",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                     }
@@ -2087,7 +2110,8 @@ namespace SpatialCheckPro.Processors
                     {
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_028", 
                             $"도로중심선 끝점이 {tolerance}m 이내 타 선과 근접하나 스냅되지 않음(엔더숏)", 
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom, config.MainTableName);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
                     else
                     {
@@ -2096,7 +2120,8 @@ namespace SpatialCheckPro.Processors
                             : ((startNearAnyLine && !startConnected) ? "시작점" : "끝점");
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_028", 
                             $"도로중심선 {which}이(가) {tolerance}m 이내 타 선과 근접하나 연결되지 않음", 
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom, config.MainTableName);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), "", segment.Geom, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
                 }
             }
@@ -2180,7 +2205,8 @@ namespace SpatialCheckPro.Processors
                     if (!hasAny)
                     {
                         var oid = bf.GetFID().ToString(CultureInfo.InvariantCulture);
-                        AddDetailedError(result, config.RuleId ?? "COM_OMS_REL_001", "도로경계면에 도로중심선이 누락됨", config.MainTableId, oid, "", bg, config.MainTableName);
+                        AddDetailedError(result, config.RuleId ?? "COM_OMS_REL_001", "도로경계면에 도로중심선이 누락됨", config.MainTableId, oid, "", bg, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
                 }
             }
@@ -2294,7 +2320,8 @@ namespace SpatialCheckPro.Processors
                                         {
                                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_001",
                                                 $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함 (부분 {i + 1})",
-                                                config.MainTableId, oid, $"침범 부분 {i + 1}/{count}", subGeom, config.MainTableName);
+                                                config.MainTableId, oid, $"침범 부분 {i + 1}/{count}", subGeom, config.MainTableName,
+                                                config.RelatedTableId, config.RelatedTableName);
                                         }
                                     }
                                 }
@@ -2303,7 +2330,8 @@ namespace SpatialCheckPro.Processors
                             {
                                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_001",
                                     $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함",
-                                    config.MainTableId, oid, string.Empty, inter, config.MainTableName);
+                                    config.MainTableId, oid, string.Empty, inter, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                         catch (Exception ex)
@@ -2423,7 +2451,8 @@ namespace SpatialCheckPro.Processors
                                     {
                                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_004", 
                                             $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함 (부분 {i + 1})", 
-                                            config.MainTableId, oid, $"교차 부분 {i + 1}/{count}", subGeom, config.MainTableName);
+                                            config.MainTableId, oid, $"교차 부분 {i + 1}/{count}", subGeom, config.MainTableName,
+                                            config.RelatedTableId, config.RelatedTableName);
                                     }
                                 }
                             }
@@ -2432,7 +2461,8 @@ namespace SpatialCheckPro.Processors
                                 // 단일 지오메트리인 경우
                                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_004", 
                                     $"{config.MainTableName}(이)가 {config.RelatedTableName}(을)를 침범함", 
-                                    config.MainTableId, oid, "", inter, config.MainTableName);
+                                    config.MainTableId, oid, "", inter, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                     }
@@ -2509,7 +2539,8 @@ namespace SpatialCheckPro.Processors
                                 var ptOid = insidePoint.GetFID().ToString(CultureInfo.InvariantCulture);
                                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_010", 
                                     $"{config.MainTableName}(이) {config.RelatedTableName}을 포함함 (포함된 점 OID: {ptOid})", 
-                                    config.MainTableId, oid, $"포함된 점: {ptOid}", ptGeom, config.MainTableName);
+                                    config.MainTableId, oid, $"포함된 점: {ptOid}", ptGeom, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                     }
@@ -2992,7 +3023,8 @@ namespace SpatialCheckPro.Processors
                                 var mismatchDetails = string.Join(", ", mismatchedFields.Select(f => $"{f}: {currentAttrs.GetValueOrDefault(f) ?? "NULL"} vs {connectedAttrs.GetValueOrDefault(f) ?? "NULL"}"));
                                 AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_001",
                                     $"연결된 중심선의 속성값이 불일치함: {mismatchDetails}",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                     }
@@ -3086,7 +3118,8 @@ namespace SpatialCheckPro.Processors
                                 var mismatchDetails = string.Join(", ", mismatchedFields.Select(f => $"{f}: {currentAttrs.GetValueOrDefault(f) ?? "NULL"} vs {connectedAttrs.GetValueOrDefault(f) ?? "NULL"}"));
                                 AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_001",
                                     $"연결된 중심선의 속성값이 불일치함: {mismatchDetails}",
-                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName);
+                                    config.MainTableId, oidStr, $"연결된 피처: {connectedOidStr}", segment.Geom, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                             }
                         }
                     }
@@ -3185,7 +3218,8 @@ namespace SpatialCheckPro.Processors
                                     var oid2Str = oid2.ToString(CultureInfo.InvariantCulture);
                                     AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_029",
                                         $"등고선이 다른 등고선과 교차함: 피처 {oid1Str}와 {oid2Str}",
-                                        config.MainTableId, oid1Str, $"교차 피처: {oid2Str}", intersection, config.MainTableName);
+                                        config.MainTableId, oid1Str, $"교차 피처: {oid2Str}", intersection, config.MainTableName,
+                                        config.RelatedTableId, config.RelatedTableName);
                                 }
                             }
                         }
@@ -3293,7 +3327,8 @@ namespace SpatialCheckPro.Processors
                             {
                                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_GEO_014",
                                     $"등고선이 {angle:F1}도로 꺽임 (임계값: {angleThreshold}도 미만)",
-                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g, config.MainTableName);
+                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                                 break; // 한 피처당 하나의 오류만 보고
                             }
                         }
@@ -3396,7 +3431,8 @@ namespace SpatialCheckPro.Processors
                             {
                                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_GEO_013",
                                     $"도로중심선이 {angle:F1}도로 꺽임 (임계값: {angleThreshold}도 이하)",
-                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g, config.MainTableName);
+                                    config.MainTableId, oidStr, $"정점 {i}에서 꺽임", g, config.MainTableName,
+                                    config.RelatedTableId, config.RelatedTableName);
                                 break; // 한 피처당 하나의 오류만 보고
                             }
                         }
@@ -3634,7 +3670,8 @@ namespace SpatialCheckPro.Processors
                                         AddDetailedError(result, config.RuleId ?? "THE_CLS_REL_001",
                                             $"교량의 하천명('{bridgeName}')과 하천중심선의 하천명('{riverName}')이 일치하지 않습니다",
                                             config.MainTableId, bridgeOid.ToString(CultureInfo.InvariantCulture),
-                                            $"교량 하천명='{bridgeName}', 하천중심선 하천명='{riverName}'", bg, config.MainTableName);
+                                            $"교량 하천명='{bridgeName}', 하천중심선 하천명='{riverName}'", bg, config.MainTableName,
+                                            config.RelatedTableId, config.RelatedTableName);
                                     }
                                     // 일치하거나 불일치하는 경우 모두 처리 완료이므로 다음 교량으로 진행
                                     break;
@@ -3758,7 +3795,8 @@ namespace SpatialCheckPro.Processors
                             // Envelope가 겹치지 않으면 포함 관계 불가능
                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_025",
                                 $"{config.MainTableName}이 {config.RelatedTableName}에 포함되지 않습니다",
-                                config.MainTableId, oid, $"PG_RDFC_SE={code}", geom, config.MainTableName);
+                                config.MainTableId, oid, $"PG_RDFC_SE={code}", geom, config.MainTableName,
+                                config.RelatedTableId, config.RelatedTableName);
                             continue;
                         }
 
@@ -3794,7 +3832,8 @@ namespace SpatialCheckPro.Processors
                         {
                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_025",
                                 $"{config.MainTableName}이 {config.RelatedTableName}에 포함되지 않습니다",
-                                config.MainTableId, oid, $"PG_RDFC_SE={code}, 허용오차={tolerance}m", geom, config.MainTableName);
+                                config.MainTableId, oid, $"PG_RDFC_SE={code}, 허용오차={tolerance}m", geom, config.MainTableName,
+                                config.RelatedTableId, config.RelatedTableName);
                         }
                     }
                     catch (Exception ex)
@@ -3873,7 +3912,8 @@ namespace SpatialCheckPro.Processors
                             // Envelope가 겹치지 않으면 포함 관계 불가능
                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021",
                                 $"하천경계가 실폭하천에 포함되지 않습니다",
-                                config.RelatedTableId, oid, string.Empty, lineGeom, config.RelatedTableName);
+                                config.RelatedTableId, oid, string.Empty, lineGeom, config.RelatedTableName,
+                                config.MainTableId, config.MainTableName);
                             continue;
                         }
 
@@ -3909,7 +3949,8 @@ namespace SpatialCheckPro.Processors
                         {
                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_021",
                                 $"하천경계가 실폭하천에 포함되지 않습니다",
-                                config.RelatedTableId, oid, $"허용오차={tolerance}m", lineGeom, config.RelatedTableName);
+                                config.RelatedTableId, oid, $"허용오차={tolerance}m", lineGeom, config.RelatedTableName,
+                                config.MainTableId, config.MainTableName);
                         }
                     }
                     catch (Exception ex)
@@ -4046,10 +4087,30 @@ namespace SpatialCheckPro.Processors
                                         if (isInside || isOverlap)
                                         {
                                             totalErrors++;
+                                            
+                                            // 겹침인 경우 교차 영역의 중심점을 사용, 포함인 경우 대상 객체 중심점 사용
+                                            Geometry? errorGeom = targetGeom;
+                                            if (isOverlap)
+                                            {
+                                                try
+                                                {
+                                                    var intersection = targetGeom.Intersection(boundaryGeom);
+                                                    if (intersection != null && !intersection.IsEmpty())
+                                                    {
+                                                        errorGeom = intersection;
+                                                    }
+                                                }
+                                                catch
+                                                {
+                                                    // 교차 계산 실패 시 원본 지오메트리 사용
+                                                }
+                                            }
+                                            
                                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_016",
                                                 $"{tableId} 객체가 경지경계 내부에 포함되거나 겹칩니다",
                                                 tableId, targetOid.ToString(CultureInfo.InvariantCulture), 
-                                                isInside ? "포함" : "겹침", targetGeom);
+                                                isInside ? "포함" : "겹침", errorGeom, tableId,
+                                                config.MainTableId, config.MainTableName);
                                         }
                                     }
                                     catch (Exception ex)
@@ -4252,7 +4313,8 @@ namespace SpatialCheckPro.Processors
                                     AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_040",
                                         $"홀과 동일한 객체가 존재합니다 (홀 출처: {sourceTable} OID={sourceOid}, 홀 인덱스={holeIdx})",
                                         tableId, oid.ToString(CultureInfo.InvariantCulture), 
-                                        $"홀 출처={sourceTable}:{sourceOid}", geom);
+                                        $"홀 출처={sourceTable}:{sourceOid}", geom, tableId,
+                                        sourceTable, string.Empty);
                                     break; // 하나만 찾으면 충분
                                 }
                             }
@@ -4383,7 +4445,8 @@ namespace SpatialCheckPro.Processors
                 var geom = GetGeometryByOID(layer, oid);
                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_027",
                     "도로중심선이 중간에 단절되었습니다",
-                    config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName);
+                    config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName,
+                    config.RelatedTableId, config.RelatedTableName);
                 geom?.Dispose();
             }
 
@@ -4500,7 +4563,8 @@ namespace SpatialCheckPro.Processors
                             var geom = GetGeometryByOID(layer, oid);
                             AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_022",
                                 $"동일 {attributeFieldName}({attrValue})를 가진 도로경계선이 단절되었습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"{fieldFilter}={attrValue}", geom, config.MainTableName);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"{fieldFilter}={attrValue}", geom, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                             geom?.Dispose();
                         }
                     }
@@ -4622,7 +4686,8 @@ namespace SpatialCheckPro.Processors
                     {
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_023",
                             "도로 면형과 경계선이 일치하지 않습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, polyGeom, config.MainTableName);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), string.Empty, polyGeom, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
                 }
             }
@@ -4713,14 +4778,16 @@ namespace SpatialCheckPro.Processors
                     {
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_032",
                             "중심선 시작점이 경계면 내부에 포함되지 않습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", startPt, config.MainTableName);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", startPt, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
 
                     if (!endWithin)
                     {
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_032",
                             "중심선 끝점이 경계면 내부에 포함되지 않습니다",
-                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", endPt, config.MainTableName);
+                            config.MainTableId, oid.ToString(CultureInfo.InvariantCulture), $"허용오차={tolerance}m", endPt, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                     }
                 }
             }
@@ -4841,7 +4908,8 @@ namespace SpatialCheckPro.Processors
                         var geom = GetGeometryByOID(centerlineLayer, segment.Oid);
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_015",
                             "중심선 시작점이 다른 중심선에 붙어있지 않고 바운더리 면형에도 붙어있지 않습니다",
-                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName);
+                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                         geom?.Dispose();
                     }
                 }
@@ -4863,7 +4931,8 @@ namespace SpatialCheckPro.Processors
                         var geom = GetGeometryByOID(centerlineLayer, segment.Oid);
                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_015",
                             "중심선 끝점이 다른 중심선에 붙어있지 않고 바운더리 면형에도 붙어있지 않습니다",
-                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName);
+                            config.MainTableId, segment.Oid.ToString(CultureInfo.InvariantCulture), string.Empty, geom, config.MainTableName,
+                            config.RelatedTableId, config.RelatedTableName);
                         geom?.Dispose();
                     }
                 }
@@ -5102,7 +5171,8 @@ namespace SpatialCheckPro.Processors
                                             {
                                                 AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_038",
                                                     $"동일 {attributeField}({attr1})를 가진 선형 객체가 교차함 (부분 {partIdx + 1}): OID {oid1Str} <-> {oid2Str}",
-                                                    config.MainTableId, oid1Str, $"교차 객체: {oid2Str} (부분 {partIdx + 1}/{count})", subGeom, config.MainTableName);
+                                                    config.MainTableId, oid1Str, $"교차 객체: {oid2Str} (부분 {partIdx + 1}/{count})", subGeom, config.MainTableName,
+                                                    config.RelatedTableId, config.RelatedTableName);
                                             }
                                         }
                                     }
@@ -5110,7 +5180,8 @@ namespace SpatialCheckPro.Processors
                                     {
                                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_038",
                                             $"동일 {attributeField}({attr1})를 가진 선형 객체가 교차함: OID {oid1Str} <-> {oid2Str}",
-                                            config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection, config.MainTableName);
+                                            config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection, config.MainTableName,
+                                            config.RelatedTableId, config.RelatedTableName);
                                     }
                                 }
                             }
@@ -5280,7 +5351,8 @@ namespace SpatialCheckPro.Processors
                                                 {
                                                     AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_037",
                                                         $"동일 {attributeField}({attr1})를 가진 폴리곤 객체가 교차함 (부분 {partIdx + 1}, 면적: {subArea:F2}㎡): OID {oid1Str} <-> {oid2Str}",
-                                                        config.MainTableId, oid1Str, $"교차 객체: {oid2Str} (부분 {partIdx + 1}/{count})", subGeom, config.MainTableName);
+                                                        config.MainTableId, oid1Str, $"교차 객체: {oid2Str} (부분 {partIdx + 1}/{count})", subGeom, config.MainTableName,
+                                                        config.RelatedTableId, config.RelatedTableName);
                                                 }
                                             }
                                         }
@@ -5289,7 +5361,8 @@ namespace SpatialCheckPro.Processors
                                     {
                                         AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_037",
                                             $"동일 {attributeField}({attr1})를 가진 폴리곤 객체가 교차함 (겹침 면적: {areaStr}㎡): OID {oid1Str} <-> {oid2Str}",
-                                            config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection, config.MainTableName);
+                                            config.MainTableId, oid1Str, $"교차 객체: {oid2Str}", intersection, config.MainTableName,
+                                            config.RelatedTableId, config.RelatedTableName);
                                     }
                                 }
                         }
@@ -5488,7 +5561,8 @@ namespace SpatialCheckPro.Processors
                                     var (x, y) = ExtractCentroid(facilityGeom);
                                     AddDetailedError(result, config.RuleId ?? "LOG_CNC_REL_003",
                                         $"도로({roadField}={roadAttr})에 도로시설 레이어가 중첩되나 {facilityField} 속성이 없음: OID {facilityOidStr}",
-                                        config.RelatedTableId, facilityOidStr, $"도로 OID: {roadOidStr}", facilityGeom, config.RelatedTableName);
+                                        config.RelatedTableId, facilityOidStr, $"도로 OID: {roadOidStr}", facilityGeom, config.RelatedTableName,
+                                        config.MainTableId, config.MainTableName);
                                 }
                             }
                         }
@@ -5781,7 +5855,8 @@ namespace SpatialCheckPro.Processors
                                     
                                     AddDetailedError(result, config.RuleId ?? "LOG_TOP_REL_039",
                                         $"표고점 간 거리가 최소 간격({requiredSpacing}m, {locationType}) 미만: OID {oid1Str} <-> {oid2Str} (거리: {distance:F2}m)",
-                                        config.MainTableId, oid1Str, $"인접 표고점: {oid2Str}", pointGeom, config.MainTableName);
+                                        config.MainTableId, oid1Str, $"인접 표고점: {oid2Str}", pointGeom, config.MainTableName,
+                                        config.RelatedTableId, config.RelatedTableName);
                                 }
                             }
                             catch (Exception ex)

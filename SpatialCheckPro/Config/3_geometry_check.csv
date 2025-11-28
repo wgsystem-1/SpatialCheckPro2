@@ -3,7 +3,7 @@ tn_alpt,표고점,POINT,Y,N,N,N,N,N,N,Y,N,N,N,N
 tn_arafc,면형공항시설,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_arhfc,면형항만시설,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_arpgr,면형지형,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
-tn_arrfc,면형도로시설,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
+tn_arrfc,면형도로시설,MULTIPOLYGON,Y,N,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_arsfc,면형구조시설,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_arwfc,면형철도시설,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_arwtcors_fclty,면형수로시설,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
@@ -37,7 +37,7 @@ tn_ptsfc,점형구조시설,POINT,Y,N,N,N,N,N,N,Y,N,N,N,N
 tn_ptvgt_fclty,점형식생시설,POINT,Y,N,N,N,N,N,N,Y,N,N,N,N
 tn_ptwfc,점형철도시설,POINT,Y,N,N,N,N,N,N,Y,N,N,N,N
 tn_ptwtcors_fclty,점형수로시설,POINT,Y,N,N,N,N,N,N,Y,N,N,N,N
-tn_rft_fclty,옥상시설물,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
+tn_rft_fclty,옥상시설물,MULTIPOLYGON,Y,N,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_river_bndry,하천경계,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_river_bt,실폭하천,MULTIPOLYGON,Y,Y,Y,Y,N,Y,Y,Y,Y,Y,N,N
 tn_river_ctln,하천중심선,MULTILINESTRING,Y,Y,Y,N,Y,N,N,Y,N,Y,Y,Y

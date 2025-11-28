@@ -41,8 +41,130 @@ namespace SpatialCheckPro.Processors
         /// </summary>
         private (double X, double Y) ExtractCentroid(Feature feature)
         {
-            // 속성 검수 오류는 NoGeom(좌표 없음)이 원칙이므로 항상 (0,0) 반환
-            return (0, 0);
+            if (feature == null)
+                return (0, 0);
+
+            try
+            {
+                var geometry = feature.GetGeometryRef();
+                if (geometry == null || geometry.IsEmpty())
+                    return (0, 0);
+
+                var geomType = geometry.GetGeometryType();
+                var flatType = (wkbGeometryType)((int)geomType & 0xFF);
+
+                // Point: 그대로 사용
+                if (flatType == wkbGeometryType.wkbPoint)
+                {
+                    return (geometry.GetX(0), geometry.GetY(0));
+                }
+
+                // MultiPoint: 첫 번째 점 사용
+                if (flatType == wkbGeometryType.wkbMultiPoint)
+                {
+                    if (geometry.GetGeometryCount() > 0)
+                    {
+                        var firstPoint = geometry.GetGeometryRef(0);
+                        if (firstPoint != null)
+                        {
+                            return (firstPoint.GetX(0), firstPoint.GetY(0));
+                        }
+                    }
+                }
+
+                // LineString: 중간 정점 사용
+                if (flatType == wkbGeometryType.wkbLineString)
+                {
+                    int pointCount = geometry.GetPointCount();
+                    if (pointCount > 0)
+                    {
+                        int midIndex = pointCount / 2;
+                        return (geometry.GetX(midIndex), geometry.GetY(midIndex));
+                    }
+                }
+
+                // MultiLineString: 첫 번째 LineString의 중간 정점
+                if (flatType == wkbGeometryType.wkbMultiLineString)
+                {
+                    if (geometry.GetGeometryCount() > 0)
+                    {
+                        var firstLine = geometry.GetGeometryRef(0);
+                        if (firstLine != null)
+                        {
+                            int pointCount = firstLine.GetPointCount();
+                            if (pointCount > 0)
+                            {
+                                int midIndex = pointCount / 2;
+                                return (firstLine.GetX(midIndex), firstLine.GetY(midIndex));
+                            }
+                        }
+                    }
+                }
+
+                // Polygon: PointOnSurface (내부 보장) → 외곽 링의 중간점
+                if (flatType == wkbGeometryType.wkbPolygon)
+                {
+                    try
+                    {
+                        using var pos = geometry.PointOnSurface();
+                        if (pos != null && !pos.IsEmpty())
+                        {
+                            return (pos.GetX(0), pos.GetY(0));
+                        }
+                    }
+                    catch { /* PointOnSurface 실패 시 폴백 */ }
+
+                    // 폴백: 외곽 링의 중간점
+                    if (geometry.GetGeometryCount() > 0)
+                    {
+                        var ring = geometry.GetGeometryRef(0);
+                        if (ring != null && ring.GetPointCount() > 0)
+                        {
+                            int midIndex = ring.GetPointCount() / 2;
+                            return (ring.GetX(midIndex), ring.GetY(midIndex));
+                        }
+                    }
+                }
+
+                // MultiPolygon: 첫 번째 Polygon의 PointOnSurface
+                if (flatType == wkbGeometryType.wkbMultiPolygon)
+                {
+                    try
+                    {
+                        using var pos = geometry.PointOnSurface();
+                        if (pos != null && !pos.IsEmpty())
+                        {
+                            return (pos.GetX(0), pos.GetY(0));
+                        }
+                    }
+                    catch { /* PointOnSurface 실패 시 폴백 */ }
+
+                    // 폴백: 첫 번째 Polygon의 외곽 링 중간점
+                    if (geometry.GetGeometryCount() > 0)
+                    {
+                        var firstPoly = geometry.GetGeometryRef(0);
+                        if (firstPoly != null && firstPoly.GetGeometryCount() > 0)
+                        {
+                            var ring = firstPoly.GetGeometryRef(0);
+                            if (ring != null && ring.GetPointCount() > 0)
+                            {
+                                int midIndex = ring.GetPointCount() / 2;
+                                return (ring.GetX(midIndex), ring.GetY(midIndex));
+                            }
+                        }
+                    }
+                }
+
+                // 기타: Envelope 중심 (최후의 수단)
+                var envelope = new Envelope();
+                geometry.GetEnvelope(envelope);
+                return ((envelope.MinX + envelope.MaxX) / 2.0, (envelope.MinY + envelope.MaxY) / 2.0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "속성 검수 좌표 추출 실패");
+                return (0, 0);
+            }
         }
 
         /// <summary>

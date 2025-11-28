@@ -498,9 +498,7 @@ namespace SpatialCheckPro.GUI.Views
                 html.AppendLine("            <div class='info-item' style='border:1px solid #fca5a5'><div class='label'>속성 관계 오류</div><div class='value error'>" + s5.ErrorCount + "</div></div>");
                 html.AppendLine("            <div class='info-item' style='border:1px solid #fde68a'><div class='label'>경고 합계</div><div class='value' style='color:#b45309'>" + s5.WarningCount + "</div></div>");
             }
-            html.AppendLine("          </div>");
-            html.AppendLine("        </section>");
-            // 5단계
+            // 5단계 (4단계와 같은 그리드 컨테이너 내에 유지)
             if (_currentValidationResult.RelationCheckResult != null)
             {
                 var s4 = _currentValidationResult.RelationCheckResult;
