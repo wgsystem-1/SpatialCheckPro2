@@ -397,6 +397,49 @@ namespace SpatialCheckPro.GUI
             MainContentContainer.Content = reportView;
             UpdateNavigationButtons("Reports");
         }
+
+        /// <summary>
+        /// SHP 변환 대화상자를 표시합니다
+        /// </summary>
+        private void NavigateToShpConvert(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var shpConvertDialog = new Views.ShpConvertDialog
+                {
+                    Owner = this
+                };
+                shpConvertDialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "SHP 변환 대화상자 표시 오류");
+                MessageBox.Show($"SHP 변환 대화상자 표시 오류: {ex.Message}", "오류", 
+                              MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// 좌표 변환 대화상자를 표시합니다
+        /// </summary>
+        private void NavigateToCoordTransform(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var coordTransformDialog = new Views.CoordinateTransformDialog
+                {
+                    Owner = this
+                };
+                coordTransformDialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "좌표 변환 대화상자 표시 오류");
+                MessageBox.Show($"좌표 변환 대화상자 표시 오류: {ex.Message}", "오류", 
+                              MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         /// <summary>
         /// 파일 선택 화면을 표시합니다.
         /// </summary>

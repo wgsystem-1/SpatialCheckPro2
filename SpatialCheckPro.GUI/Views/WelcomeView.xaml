@@ -22,19 +22,19 @@
                 <Image Source="{StaticResource AppLogo}" 
                        Width="120" Height="120" RenderTransformOrigin="0.0,0.0" Margin="20,20,20,20" HorizontalAlignment="Center"/>
 
-                <TextBlock Text="국가기본도 FileGDB 검수 프로그램" 
-                          FontSize="34" 
+                <TextBlock Text="국가기본도 FileGDB 검사 프로그램" 
+                          FontSize="36" 
                           FontWeight="Bold" 
                           Foreground="#1F2937" 
                           HorizontalAlignment="Center"
-                          FontFamily="HYGothic-Extra" Width="599" Height="39" TextAlignment="Center"/>
+                          FontFamily="KoPubDotum Bold" Width="599" Height="39" TextAlignment="Center"/>
 
                 <TextBlock Text="SpatialCheckPro" 
                           FontSize="28" 
                           Foreground="#3B82F6" 
                           HorizontalAlignment="Center"
                           FontWeight="SemiBold"
-                          Margin="0,12,0,12" TextAlignment="Center"/>
+                          Margin="0,12,0,12" TextAlignment="Center" FontFamily="KoPubDotum Bold"/>
             </StackPanel>
 
             <!-- 설명 텍스트 -->
@@ -75,28 +75,28 @@
                 <!-- 최근 검수 정보 -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <TextBlock Text="📊 최근 검수:" 
-                              FontSize="12" 
+                              FontSize="14" 
                               Foreground="#6B7280"
                               VerticalAlignment="Center"
-                              Margin="0,0,10,0"/>
+                              Margin="0,0,10,0" FontFamily="KoPubDotum Medium"/>
                     <TextBlock x:Name="LastValidationText" 
                               Text="-" 
-                              FontSize="12" 
+                              FontSize="14" 
                               Foreground="#374151"
-                              VerticalAlignment="Center"/>
+                              VerticalAlignment="Center" FontFamily="KoPubDotum Medium"/>
                 </StackPanel>
 
                 <!-- 시스템 정보 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <TextBlock 
-                              FontSize="11" 
+                              FontSize="14" 
                               Foreground="#9CA3AF"
                               VerticalAlignment="Center"
-                              Margin="0,0,20,0"><Run Text="ISO 19157 데이터 품질 표준 준수"/><LineBreak/><Run Language="ko-kr" Text="OGC Simple Feature 준수"/></TextBlock>
+                              Margin="0,0,20,0" FontFamily="KoPubDotum Medium"><Run Text="ISO 19157 데이터 품질 표준 준수"/><LineBreak/><Run Language="ko-kr" Text="OGC Simple Feature 준수"/></TextBlock>
                     <TextBlock Text="© 2025 (주)우리강산시스템" 
-                              FontSize="11" 
+                              FontSize="14" 
                               Foreground="#9CA3AF"
-                              VerticalAlignment="Center"/>
+                              VerticalAlignment="Center" FontFamily="KoPubDotum Medium"/>
                 </StackPanel>
             </Grid>
         </Border>

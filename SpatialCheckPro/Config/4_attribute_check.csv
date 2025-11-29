@@ -102,3 +102,4 @@ THE_CLS_ATR_061,Y,tn_river_bt,하천형태구분,rvr_frm_se,CodeList,하천형�
 THE_CLS_ATR_062,Y,tn_arhfc,항만시설구조구분,ptfcst_se,CodeList,항만시설구조구분,항만시설구조구분_코드리스트 점검 (항만시설구조구분_Code)
 THE_CLS_ATR_063,Y,tn_ctprvn_bndry,행정구역구분,adm_se,CodeList,행정구역구분,행정구역구분_코드리스트 점검 (행정구역구분_Code)
 THE_CLS_ATR_064,Y,tn_lkmh,호소구분,lkmh_se,CodeList,호소구분,호소구분_코드리스트 점검 (호소구분_Code)
+THE_CLS_ATR_065,Y,tn_ptsfc,재질구분,mtr_se,CodeList,재질구분,점형구조시설구분_코드리스트 점검 (재질구분_Code_mtr_se)

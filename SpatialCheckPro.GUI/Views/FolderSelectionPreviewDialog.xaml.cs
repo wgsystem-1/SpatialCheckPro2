@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Extensions.Logging;
 using SpatialCheckPro.Services;
 using System.Runtime.Versioning;
+using WinForms = System.Windows.Forms;
 
 namespace SpatialCheckPro.GUI.Views
 {
@@ -18,7 +21,7 @@ namespace SpatialCheckPro.GUI.Views
         private readonly ILogger<FolderSelectionPreviewDialog>? _logger;
         private readonly QcErrorsPathManager _pathManager;
         private string _selectedPath = string.Empty;
-        private List<QcErrorsPathManager.FileGdbInfo> _targetGdbs = new();
+        private ObservableCollection<QcErrorsPathManager.FileGdbInfo> _targetGdbs = new();
 
         public bool IsContinue { get; private set; }
         public List<string> SelectedGdbPaths => _targetGdbs.Select(g => g.FullPath).ToList();
@@ -59,7 +62,7 @@ namespace SpatialCheckPro.GUI.Views
                 if (_pathManager.IsFileGdb(_selectedPath))
                 {
                     // 단일 FileGDB를 직접 선택한 경우
-                    _targetGdbs = new List<QcErrorsPathManager.FileGdbInfo>
+                    _targetGdbs = new ObservableCollection<QcErrorsPathManager.FileGdbInfo>
                     {
                         new QcErrorsPathManager.FileGdbInfo
                         {
@@ -73,11 +76,12 @@ namespace SpatialCheckPro.GUI.Views
                 else
                 {
                     // 폴더를 선택한 경우 - 하위 FileGDB 검색
-                    _targetGdbs = _pathManager.FindValidationTargets(_selectedPath);
+                    var foundGdbs = _pathManager.FindValidationTargets(_selectedPath);
+                    _targetGdbs = new ObservableCollection<QcErrorsPathManager.FileGdbInfo>(foundGdbs);
                 }
                 
                 TargetGdbGrid.ItemsSource = _targetGdbs;
-                TargetCountText.Text = $"({_targetGdbs.Count}개)";
+                UpdateTargetCount();
                 
                 // 제외된 항목 찾기 (폴더 선택시에만)
                 if (!_pathManager.IsFileGdb(_selectedPath))
@@ -91,26 +95,7 @@ namespace SpatialCheckPro.GUI.Views
                     }
                 }
                 
-                // 검수 대상이 있으면 계속 버튼 활성화
-                if (_targetGdbs.Any())
-                {
-                    ContinueButton.IsEnabled = true;
-                    
-                    // 총 크기 계산
-                    var totalSize = _targetGdbs.Sum(g => g.SizeInBytes);
-                    var totalSizeText = FormatFileSize(totalSize);
-                    
-                    _logger?.LogInformation("검수 대상 FileGDB {Count}개 발견, 총 크기: {Size}", 
-                        _targetGdbs.Count, totalSizeText);
-                }
-                else
-                {
-                    // 검수 대상이 없는 경우 경고
-                    WarningText.Text = "검수 대상 FileGDB가 없습니다.";
-                    WarningText.Visibility = Visibility.Visible;
-                    
-                    _logger?.LogWarning("검수 대상 FileGDB를 찾을 수 없습니다: {Path}", _selectedPath);
-                }
+                UpdateContinueButtonState();
             }
             catch (Exception ex)
             {
@@ -122,6 +107,140 @@ namespace SpatialCheckPro.GUI.Views
                     MessageBoxImage.Error);
                 Close();
             }
+        }
+
+        /// <summary>
+        /// 검수 대상 개수 및 상태를 업데이트합니다
+        /// </summary>
+        private void UpdateTargetCount()
+        {
+            TargetCountText.Text = $"({_targetGdbs.Count}개)";
+            
+            if (_targetGdbs.Any())
+            {
+                var totalSize = _targetGdbs.Sum(g => g.SizeInBytes);
+                var totalSizeText = FormatFileSize(totalSize);
+                _logger?.LogInformation("검수 대상 FileGDB {Count}개, 총 크기: {Size}", 
+                    _targetGdbs.Count, totalSizeText);
+            }
+        }
+
+        /// <summary>
+        /// 계속 버튼 활성화 상태를 업데이트합니다
+        /// </summary>
+        private void UpdateContinueButtonState()
+        {
+            if (_targetGdbs.Any())
+            {
+                ContinueButton.IsEnabled = true;
+                WarningText.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                ContinueButton.IsEnabled = false;
+                WarningText.Text = "검수 대상 FileGDB가 없습니다.";
+                WarningText.Visibility = Visibility.Visible;
+                _logger?.LogWarning("검수 대상 FileGDB를 찾을 수 없습니다: {Path}", _selectedPath);
+            }
+        }
+
+        /// <summary>
+        /// FileGDB 추가 버튼 클릭
+        /// </summary>
+        private void AddGdbButton_Click(object sender, RoutedEventArgs e)
+        {
+            using var folderDialog = new WinForms.FolderBrowserDialog
+            {
+                Description = "추가할 File Geodatabase(.gdb) 폴더를 선택하세요",
+                ShowNewFolderButton = false
+            };
+
+            if (folderDialog.ShowDialog() == WinForms.DialogResult.OK)
+            {
+                var selectedPath = folderDialog.SelectedPath;
+
+                // .gdb 확장자 확인
+                if (!selectedPath.EndsWith(".gdb", StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show(
+                        "선택한 폴더가 File Geodatabase(.gdb)가 아닙니다.\n.gdb 확장자를 가진 폴더를 선택해주세요.",
+                        "잘못된 선택",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                // 중복 확인
+                if (_targetGdbs.Any(g => g.FullPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase)))
+                {
+                    MessageBox.Show(
+                        "이미 목록에 추가된 FileGDB입니다.",
+                        "중복",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                // 목록에 추가
+                var newGdb = new QcErrorsPathManager.FileGdbInfo
+                {
+                    FullPath = selectedPath,
+                    Name = Path.GetFileName(selectedPath),
+                    RelativePath = selectedPath, // 직접 추가한 경우 전체 경로 표시
+                    SizeInBytes = _pathManager.CalculateDirectorySize(selectedPath)
+                };
+
+                _targetGdbs.Add(newGdb);
+                UpdateTargetCount();
+                UpdateContinueButtonState();
+
+                _logger?.LogInformation("FileGDB 추가됨: {Path}", selectedPath);
+            }
+        }
+
+        /// <summary>
+        /// 선택 제거 버튼 클릭
+        /// </summary>
+        private void RemoveGdbButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedItems = TargetGdbGrid.SelectedItems.Cast<QcErrorsPathManager.FileGdbInfo>().ToList();
+            
+            if (!selectedItems.Any())
+            {
+                MessageBox.Show(
+                    "제거할 항목을 선택해주세요.",
+                    "선택 필요",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"선택한 {selectedItems.Count}개 항목을 목록에서 제거하시겠습니까?",
+                "제거 확인",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                foreach (var item in selectedItems)
+                {
+                    _targetGdbs.Remove(item);
+                    _logger?.LogInformation("FileGDB 제거됨: {Path}", item.FullPath);
+                }
+
+                UpdateTargetCount();
+                UpdateContinueButtonState();
+                RemoveGdbButton.IsEnabled = false;
+            }
+        }
+
+        /// <summary>
+        /// 검수 대상 그리드 선택 변경 시
+        /// </summary>
+        private void TargetGdbGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            RemoveGdbButton.IsEnabled = TargetGdbGrid.SelectedItems.Count > 0;
         }
 
         /// <summary>

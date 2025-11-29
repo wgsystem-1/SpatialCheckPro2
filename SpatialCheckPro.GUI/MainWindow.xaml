@@ -29,6 +29,8 @@
         <Geometry x:Key="CloseIcon">M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z</Geometry>
         <Geometry x:Key="HelpIcon">M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z</Geometry>
         <Geometry x:Key="ErrorIcon">M12,2L13.09,8.26L22,9L17,14L18.18,23L12,19.77L5.82,23L7,14L2,9L10.91,8.26L12,2M11,15H13V17H11V15M11,7H13V13H11V7Z</Geometry>
+        <Geometry x:Key="ExportIcon">M23,12L19,8V11H10V13H19V16M1,18V6C1,4.89 1.9,4 3,4H15A2,2 0 0,1 17,6V9H15V6H3V18H15V15H17V18A2,2 0 0,1 15,20H3A2,2 0 0,1 1,18Z</Geometry>
+        <Geometry x:Key="TransformIcon">M12.89,3L14.85,3.4L11.11,21L9.15,20.6L12.89,3M19.59,12L16,8.41V5.58L22.42,12L16,18.41V15.58L19.59,12M1.58,12L8,5.58V8.41L4.41,12L8,15.58V18.41L1.58,12Z</Geometry>
     </Window.Resources>
 
     <Grid>
@@ -86,7 +88,7 @@
                            Click="NavigateToFileSelection">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <Path Data="{StaticResource FolderIcon}" Fill="{StaticResource SidebarIconFolder}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
-                        <TextBlock Text="폴더 선택" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" TextAlignment="Center" FontFamily="HYGothic-Extra" />
+                        <TextBlock Text="폴더 선택" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" TextAlignment="Center" FontFamily="KoPubDotum Medium" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="ValidationNavButton"
@@ -95,7 +97,7 @@
                            Click="NavigateToValidation">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <Path Data="{StaticResource PlayIcon}" Fill="{StaticResource SidebarIconPlay}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
-                        <TextBlock Text="검수 진행" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" TextAlignment="Center" FontFamily="HYGothic-Extra"/>
+                        <TextBlock Text="검수 진행" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" TextAlignment="Center" FontFamily="KoPubDotum Medium"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="ResultsNavButton"
@@ -104,7 +106,7 @@
                            Click="NavigateToResults">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <Path Data="{StaticResource ChartIcon}" Fill="{StaticResource SidebarIconChart}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
-                        <TextBlock Text="검수 결과" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="HYGothic-Extra"/>
+                        <TextBlock Text="검수 결과" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="KoPubDotum Medium"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="SettingsNavButton"
@@ -113,7 +115,7 @@
                            Click="ValidationSettings_Click">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <Path Data="{StaticResource SettingsIcon}" Fill="{StaticResource SidebarIconSettings}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
-                        <TextBlock Text="검수 환경 설정" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="HYGothic-Extra"/>
+                        <TextBlock Text="검수 환경 설정" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="KoPubDotum Medium"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="ReportsNavButton"
@@ -122,7 +124,25 @@
                            Click="NavigateToReports">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                         <Path Data="{StaticResource ReportIcon}" Fill="{StaticResource SidebarIconReport}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
-                        <TextBlock Text="보고서" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="HYGothic-Extra"/>
+                        <TextBlock Text="보고서" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="KoPubDotum Medium"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ShpConvertNavButton"
+                           Style="{StaticResource SidebarButton}"
+                           HorizontalContentAlignment="Center"
+                           Click="NavigateToShpConvert">
+                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                        <Path Data="{StaticResource ExportIcon}" Fill="{StaticResource SidebarIconExport}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
+                        <TextBlock Text="SHP 변환" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="KoPubDotum Medium"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="CoordTransformNavButton"
+                           Style="{StaticResource SidebarButton}"
+                           HorizontalContentAlignment="Center"
+                           Click="NavigateToCoordTransform">
+                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                        <Path Data="{StaticResource TransformIcon}" Fill="{StaticResource SidebarIconTransform}" Width="32" Height="32" Stretch="Uniform" Margin="0,0,0,8"/>
+                        <TextBlock Text="좌표 변환" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="15" FontFamily="KoPubDotum Medium"/>
                     </StackPanel>
                 </Button>
             </StackPanel>

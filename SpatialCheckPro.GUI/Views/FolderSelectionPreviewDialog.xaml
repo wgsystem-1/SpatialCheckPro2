@@ -62,14 +62,44 @@
             <!-- 검수 대상 -->
             <Border Grid.Row="0" Style="{StaticResource InfoCard}">
                 <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <TextBlock Text="✓" Foreground="#10B981" FontSize="16" FontWeight="Bold" Margin="0,0,8,0"/>
-                        <TextBlock Text="검수 대상 FileGDB" Style="{StaticResource ListHeader}"/>
-                        <TextBlock x:Name="TargetCountText" 
-                                  Text="(0개)" 
-                                  Foreground="#6B7280" 
-                                  Margin="8,0,0,0"/>
-                    </StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock Text="✓" Foreground="#10B981" FontSize="16" FontWeight="Bold" Margin="0,0,8,0"/>
+                            <TextBlock Text="검수 대상 FileGDB" Style="{StaticResource ListHeader}"/>
+                            <TextBlock x:Name="TargetCountText" 
+                                      Text="(0개)" 
+                                      Foreground="#6B7280" 
+                                      Margin="8,0,0,0"/>
+                        </StackPanel>
+                        
+                        <Button Grid.Column="1" 
+                                x:Name="AddGdbButton"
+                                Content="+ FileGDB 추가"
+                                Click="AddGdbButton_Click"
+                                Margin="0,0,8,0"
+                                Padding="12,6"
+                                Background="#10B981"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Cursor="Hand"/>
+                        
+                        <Button Grid.Column="2" 
+                                x:Name="RemoveGdbButton"
+                                Content="선택 제거"
+                                Click="RemoveGdbButton_Click"
+                                Padding="12,6"
+                                Background="#EF4444"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                IsEnabled="False"/>
+                    </Grid>
                     
                     <DataGrid x:Name="TargetGdbGrid" 
                               AutoGenerateColumns="False"
@@ -78,7 +108,9 @@
                               HeadersVisibility="Column"
                               BorderThickness="0"
                               MaxHeight="200"
-                              VerticalScrollBarVisibility="Auto">
+                              VerticalScrollBarVisibility="Auto"
+                              SelectionMode="Extended"
+                              SelectionChanged="TargetGdbGrid_SelectionChanged">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="FileGDB 이름" 
                                                Binding="{Binding Name}" 

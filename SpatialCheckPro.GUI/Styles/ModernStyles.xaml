@@ -23,6 +23,8 @@
     <SolidColorBrush x:Key="SidebarIconChart" Color="#C7D2FE"/>
     <SolidColorBrush x:Key="SidebarIconSettings" Color="#FDE68A"/>
     <SolidColorBrush x:Key="SidebarIconReport" Color="#FBCFE8"/>
+    <SolidColorBrush x:Key="SidebarIconExport" Color="#FDBA74"/>
+    <SolidColorBrush x:Key="SidebarIconTransform" Color="#A5B4FC"/>
 
     <!-- 폰트 -->
     <FontFamily x:Key="PrimaryFont">Malgun Gothic, Segoe UI, Arial, sans-serif</FontFamily>

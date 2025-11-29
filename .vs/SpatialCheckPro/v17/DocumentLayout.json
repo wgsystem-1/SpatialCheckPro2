@@ -1,12 +1,52 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "G:\\SpatialCheckPro2\\",
-  "Documents": [],
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro2\\spatialcheckpro.gui\\views\\validationsettingsview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|solutionrelative:spatialcheckpro.gui\\views\\validationsettingsview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|g:\\spatialcheckpro2\\spatialcheckpro.gui\\views\\welcomeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}|SpatialCheckPro.GUI\\SpatialCheckPro.GUI.csproj|solutionrelative:spatialcheckpro.gui\\views\\welcomeview.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-      "DocumentGroups": []
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "ValidationSettingsView.xaml",
+              "DocumentMoniker": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\Views\\ValidationSettingsView.xaml",
+              "RelativeDocumentMoniker": "SpatialCheckPro.GUI\\Views\\ValidationSettingsView.xaml",
+              "ToolTip": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\Views\\ValidationSettingsView.xaml",
+              "RelativeToolTip": "SpatialCheckPro.GUI\\Views\\ValidationSettingsView.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2025-11-28T22:18:21.966Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "WelcomeView.xaml",
+              "DocumentMoniker": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
+              "RelativeDocumentMoniker": "SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
+              "ToolTip": "G:\\SpatialCheckPro2\\SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
+              "RelativeToolTip": "SpatialCheckPro.GUI\\Views\\WelcomeView.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2025-11-28T21:55:01.205Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
     }
   ]
 }
